@@ -1,51 +1,104 @@
-# Actualiza los datos del mapa publicado. Retoma la caché de la corrida anterior (rama
-# "datos"), consulta solo las fuentes vencidas y vuelve a subir esa rama como un único
-# commit (force-push), así el historial no crece.
+# Actualiza los datos del mapa publicado. Cada corrida queda en un bucle de ~5 h 30 min:
+# cada 5 minutos consulta las fuentes vencidas (la caché queda en disco entre vueltas) y
+# sube la rama "datos" como un único commit (force-push), así el historial no crece.
+# Antes de terminar se vuelve a lanzar a sí misma; el cron es solo un respaldo que
+# reinicia la cadena si se cortó.
 name: Datos
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
-
-concurrency:
-  group: datos
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   generar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      # Si hay una corrida más vieja activa, esta cede: la programada sale enseguida y la
+      # lanzada a mano o por la corrida anterior espera hasta 15 min a que termine (relevo).
+      - name: Verificar que no haya otro bucle
+        id: turno
+        run: |
+          otras() {
+            gh run list -R "$GITHUB_REPOSITORY" --workflow datos.yml --limit 30 \
+              --json databaseId,status \
+              --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID and .status != \"completed\")] | length"
+          }
+          espera=0
+          [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && espera=900
+          inicio=$(date +%s)
+          while n=$(otras) && [ "$n" -gt 0 ]; do
+            if [ $(( $(date +%s) - inicio )) -ge "$espera" ]; then
+              echo "Ya hay $n corrida(s) activa(s); esta termina sin hacer nada."
+              echo "seguir=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Esperando a que termine la corrida anterior..."
+            sleep 20
+          done
+          echo "seguir=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        if: steps.turno.outputs.seguir == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.turno.outputs.seguir == 'true'
         with:
           python-version: "3.12"
 
       - name: Recuperar la caché anterior
+        if: steps.turno.outputs.seguir == 'true'
         run: |
           if git fetch --depth=1 origin datos; then
             git archive FETCH_HEAD cache | tar -x || true
           fi
 
-      - name: Generar estaciones.json
-        run: python servidor.py --generar salida --limite 480
-
-      - name: Publicar en la rama datos
+      - name: Generar y publicar cada 5 minutos
+        if: steps.turno.outputs.seguir == 'true'
+        timeout-minutes: 340
         run: |
-          mkdir publicar
-          cp -r cache publicar/cache
-          cp salida/estaciones.json publicar/
-          cd publicar
-          git init -q -b datos
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Datos $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" datos
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          publicar() {
+            # Encadenado con && porque dentro de un "if" bash no corta ante errores.
+            rm -rf publicar && mkdir publicar &&
+            cp -r cache publicar/cache &&
+            cp salida/estaciones.json publicar/ &&
+            cd publicar &&
+            git init -q -b datos &&
+            git config user.name "github-actions[bot]" &&
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com" &&
+            git add -A &&
+            git commit -q -m "Datos $(date -u +%Y-%m-%dT%H:%MZ)" &&
+            git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" datos
+            local estado=$?
+            cd "$GITHUB_WORKSPACE"
+            return $estado
+          }
+          fin=$(( $(date +%s) + 330 * 60 ))
+          vuelta=0
+          while true; do
+            inicio=$(date +%s)
+            vuelta=$((vuelta + 1))
+            echo "::group::Vuelta $vuelta ($(date -u +%H:%M:%SZ))"
+            if python servidor.py --generar salida --limite 480 && publicar; then
+              echo "Publicado."
+            else
+              echo "::warning::La vuelta $vuelta falló; se reintenta en la próxima."
+            fi
+            echo "::endgroup::"
+            proxima=$(( inicio + 300 ))
+            [ "$proxima" -ge "$fin" ] && break
+            resto=$(( proxima - $(date +%s) ))
+            [ "$resto" -gt 0 ] && sleep "$resto"
+          done
+
+      - name: Relanzar la próxima corrida
+        if: always() && steps.turno.outputs.seguir == 'true'
+        run: gh workflow run datos.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"

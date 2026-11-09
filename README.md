@@ -113,7 +113,7 @@ Antes de publicar el mapa, revisá las condiciones de uso de cada red.
 
 El mapa está publicado en **https://franconeirotti.github.io/Clima-publico/**, sin servidor propio:
 
-- `.github/workflows/datos.yml` corre cada 5 minutos (GitHub suele demorar los programados unos minutos más): ejecuta `python servidor.py --generar salida`, que hace una sola pasada respetando el intervalo de cada fuente, y sube `estaciones.json` junto con la carpeta `cache/` a la rama `datos` (un único commit que se reemplaza en cada corrida).
+- `.github/workflows/datos.yml` queda corriendo en un bucle: cada 5 minutos ejecuta `python servidor.py --generar salida`, que hace una pasada respetando el intervalo de cada fuente, y sube `estaciones.json` junto con la carpeta `cache/` a la rama `datos` (un único commit que se reemplaza cada vez). Cada corrida dura ~5 h 30 min y antes de terminar lanza la siguiente; si una vuelta falla, sigue con la próxima. Un cron cada 30 minutos sirve de respaldo: si no hay otra corrida activa, reinicia la cadena. Para detenerla, desactivá el workflow desde la pestaña Actions.
 - La página lee los datos de `https://raw.githubusercontent.com/FrancoNeirotti/Clima-publico/datos/estaciones.json` (con hasta 5 minutos de caché del CDN).
 - `.github/workflows/pages.yml` despliega `static/index.html` solo cuando cambia `main`, apuntando la etiqueta `<meta name="url-datos">` a ese archivo.
 

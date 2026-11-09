@@ -1,0 +1,1 @@
+gh workflow run datos.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
