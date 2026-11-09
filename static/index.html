@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estaciones meteorológicas de Argentina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --tinta: #16242f;
+    --tinta-suave: #52626e;
+    --fondo: #e9eef0;
+    --panel: #ffffff;
+    --linea: #dbe2e6;
+    --acento: #1f6f8b;
+    --aviso: #a8540a;
+    --sombra: 0 8px 28px rgba(22, 36, 47, .18);
+    --numeros: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --tinta: #e4ebef;
+      --tinta-suave: #9db0bc;
+      --fondo: #0e1920;
+      --panel: #16232c;
+      --linea: #2a3b46;
+      --acento: #63b6d3;
+      --aviso: #f0a23b;
+      --sombra: 0 8px 28px rgba(0, 0, 0, .45);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Barlow", system-ui, sans-serif;
+    color: var(--tinta);
+    background: var(--fondo);
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  #mapa { position: fixed; inset: 0; background: var(--fondo); }
+
+  .panel {
+    position: fixed; z-index: 1000;
+    top: 12px; left: 12px; bottom: 12px;
+    width: min(370px, calc(100% - 24px));
+    display: flex; flex-direction: column;
+    background: var(--panel);
+    border-radius: 14px;
+    box-shadow: var(--sombra);
+    overflow: hidden;
+  }
+  .cabecera { padding: 18px 18px 12px; border-bottom: 1px solid var(--linea); }
+  h1 {
+    font-family: var(--numeros);
+    font-weight: 700; font-size: 1.5rem; line-height: 1.1;
+    margin: 0 0 4px;
+  }
+  .estado { margin: 0; color: var(--tinta-suave); font-size: .9rem; }
+  .estado.error { color: var(--aviso); }
+  .acciones { display: flex; gap: 8px; margin-top: 12px; }
+  input[type="search"] {
+    flex: 1; min-width: 0;
+    font: inherit; color: inherit;
+    padding: 8px 10px;
+    border: 1px solid var(--linea); border-radius: 8px;
+    background: transparent;
+  }
+  button {
+    font: inherit; font-weight: 600; color: var(--acento);
+    background: transparent;
+    border: 1px solid var(--linea); border-radius: 8px;
+    padding: 8px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--acento); }
+  :focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+  .fuentes { padding: 10px 18px; border-bottom: 1px solid var(--linea); display: grid; gap: 6px; }
+  .fuente { display: flex; align-items: baseline; gap: 8px; font-size: .92rem; cursor: pointer; }
+  .fuente .cuenta { margin-left: auto; font-family: var(--numeros); color: var(--tinta-suave); }
+  .fuente-nota { margin: -2px 0 2px 24px; font-size: .82rem; color: var(--aviso); }
+  .fuente-nota.suave { color: var(--tinta-suave); }
+  .fuentes { max-height: 34vh; overflow-y: auto; }
+
+  .cuerpo { flex: 1; overflow-y: auto; }
+  .lista { list-style: none; margin: 0; padding: 6px 0; }
+  .lista button {
+    width: 100%; display: flex; align-items: baseline; gap: 10px;
+    border: 0; border-radius: 0; padding: 7px 18px;
+    color: var(--tinta); font-weight: 500; text-align: left;
+  }
+  .lista button:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); }
+  .lista .t { margin-left: auto; font-family: var(--numeros); font-weight: 600; }
+  .lista .nombre { min-width: 0; }
+  .lista small { display: block; font-size: .78rem; font-weight: 400; color: var(--tinta-suave); }
+  .vacio { padding: 18px; color: var(--tinta-suave); }
+  a { color: var(--acento); }
+  .fuente a { text-decoration: none; font-size: .85rem; }
+  .origen { margin: 12px 0 0; font-size: .88rem; color: var(--tinta-suave); }
+
+  .fuentes-caja { border-bottom: 1px solid var(--linea); }
+  .fuentes-caja > summary {
+    padding: 10px 18px; cursor: pointer; font-weight: 600; font-size: .92rem;
+    list-style-position: inside;
+  }
+  .fuentes-caja > summary .resumen { font-weight: 400; color: var(--tinta-suave); }
+  .fuentes-caja .fuentes { border-bottom: 0; padding-top: 0; }
+  .asa { display: none; }
+
+  .detalle { padding: 16px 18px 20px; }
+  .detalle .volver { margin-bottom: 14px; }
+  .detalle h2 { font-family: var(--numeros); font-weight: 600; font-size: 1.3rem; line-height: 1.15; margin: 0; }
+  .detalle .sub { color: var(--tinta-suave); font-size: .88rem; margin: 2px 0 0; }
+  .detalle .sub.viejo { color: var(--aviso); }
+  .grande { display: flex; align-items: center; gap: 14px; margin: 16px 0 10px; }
+  .grande .temp {
+    font-family: var(--numeros); font-weight: 600;
+    font-size: 4.2rem; line-height: .9;
+    color: var(--c, var(--tinta));
+  }
+  .grande .cielo { font-size: 1.05rem; font-weight: 500; }
+  .grande .sens { color: var(--tinta-suave); font-size: .88rem; }
+  dl.datos { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  dl.datos dt, dl.datos dd { padding: 9px 0; border-top: 1px solid var(--linea); margin: 0; }
+  dl.datos dd { font-family: var(--numeros); font-weight: 600; font-size: 1.05rem; text-align: right; }
+  .crudo {
+    margin-top: 14px; padding: 10px; border-radius: 8px;
+    background: color-mix(in srgb, var(--tinta) 6%, transparent);
+    font-family: ui-monospace, Consolas, monospace; font-size: .8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .escala { padding: 10px 18px 14px; border-top: 1px solid var(--linea); font-size: .8rem; color: var(--tinta-suave); }
+  .escala .barra { height: 8px; border-radius: 4px; margin-bottom: 4px; }
+  .escala .marcas { display: flex; justify-content: space-between; font-family: var(--numeros); }
+
+  /* Marcadores: la temperatura es el marcador */
+  .pin-caja { background: none; border: 0; }
+  .pin {
+    position: absolute; transform: translate(-50%, -50%);
+    min-width: 34px; padding: 2px 6px;
+    font-family: var(--numeros); font-weight: 700; font-size: 14px; line-height: 18px;
+    text-align: center; white-space: nowrap;
+    color: #10202a;
+    background: var(--c);
+    border: 1.5px solid rgba(255, 255, 255, .9);
+    border-radius: 11px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+    cursor: pointer;
+  }
+  .pin.smn { border-radius: 4px; }
+  .pin.red { font-size: 12px; line-height: 15px; min-width: 28px; padding: 1px 4px; border-width: 1px; }
+  .pin.privada { border-style: dashed; opacity: .9; }
+  .fuentes-titulo { margin: 6px 0 0; font-size: .78rem; font-weight: 600; text-transform: uppercase;
+                    letter-spacing: .04em; color: var(--tinta-suave); }
+  .pin.elegido { outline: 3px solid var(--tinta); outline-offset: 1px; z-index: 1; }
+  .pin.sin-dato { background: #b9c3c9; }
+
+  /* Móvil: el panel es una hoja inferior con tres alturas (baja, media, alta). */
+  @media (max-width: 700px) {
+    .panel {
+      top: auto; left: 0; right: 0; bottom: 0; width: auto;
+      height: var(--alto-hoja); border-radius: 16px 16px 0 0;
+      transition: height .25s ease;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .panel[data-hoja="baja"] { --alto-hoja: 150px; }
+    .panel[data-hoja="media"] { --alto-hoja: 52dvh; }
+    .panel[data-hoja="alta"] { --alto-hoja: calc(100dvh - 48px); }
+    .panel.arrastrando { transition: none; }
+    .asa {
+      display: flex; justify-content: center; align-items: center;
+      width: 100%; height: 26px; padding: 0; border: 0; border-radius: 0;
+      flex: none; touch-action: none; cursor: grab;
+    }
+    .asa span { width: 44px; height: 5px; border-radius: 3px; background: var(--linea); }
+    .cabecera { padding: 0 14px 10px; }
+    h1 { display: none; }
+    .estado { font-size: .8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .acciones { margin-top: 8px; }
+    input[type="search"] { font-size: 16px; } /* menos de 16px hace que iOS haga zoom al tocar */
+    button { padding: 9px 12px; }
+    .fuentes-caja > summary { padding: 10px 14px; }
+    .fuentes { padding: 6px 14px 10px; max-height: none; }
+    .fuente { padding: 4px 0; }
+    .lista button { padding: 11px 14px; }
+    .detalle { padding: 12px 14px 20px; }
+    .grande .temp { font-size: 3.4rem; }
+    .escala { display: none; }
+    .leaflet-control-zoom { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div id="mapa" role="application" aria-label="Mapa de estaciones"></div>
+
+<aside class="panel" id="panel" data-hoja="media">
+  <button type="button" class="asa" id="asa" aria-label="Agrandar o achicar el panel"><span></span></button>
+  <div class="cabecera">
+    <h1>Estaciones de Argentina</h1>
+    <p class="estado" id="estado">Cargando datos…</p>
+    <div class="acciones">
+      <input type="search" id="buscar" placeholder="Buscar estación o localidad" aria-label="Buscar estación">
+      <button type="button" id="actualizar">Actualizar</button>
+    </div>
+  </div>
+  <details class="fuentes-caja" id="fuentes-caja">
+    <summary>Fuentes <span class="resumen" id="fuentes-resumen"></span></summary>
+    <div class="fuentes" id="fuentes"></div>
+  </details>
+  <div class="cuerpo" id="cuerpo"></div>
+  <div class="escala" aria-hidden="true">
+    <div class="barra" id="barra"></div>
+    <div class="marcas"><span>−10°</span><span>0°</span><span>10°</span><span>20°</span><span>30°</span><span>40°</span></div>
+  </div>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const ZONA = "America/Argentina/Buenos_Aires";
+const REFRESCO_MS = 5 * 60 * 1000;
+const REINTENTO_CARGANDO_MS = 5000;
+const HORAS_VIEJO = 3;
+// Redes oficiales del SMN y aeropuertos: se dibujan más grandes y por encima del resto.
+const OFICIALES = new Set(["metar", "smn", "synop"]);
+
+const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 });
+const fmtHora = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, hour: "2-digit", minute: "2-digit" });
+const fmtFecha = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+// Escala de temperatura (°C → color)
+const ESCALA = [[-10, [74, 92, 196]], [0, [96, 150, 220]], [10, [118, 200, 205]],
+                [18, [150, 212, 120]], [25, [242, 196, 78]], [32, [236, 122, 58]], [40, [190, 52, 60]]];
+function colorTemp(t) {
+  if (t == null) return null;
+  if (t <= ESCALA[0][0]) return `rgb(${ESCALA[0][1]})`;
+  for (let i = 1; i < ESCALA.length; i++) {
+    const [t1, c1] = ESCALA[i];
+    if (t <= t1) {
+      const [t0, c0] = ESCALA[i - 1];
+      const k = (t - t0) / (t1 - t0);
+      return `rgb(${c0.map((v, j) => Math.round(v + (c1[j] - v) * k))})`;
+    }
+  }
+  return `rgb(${ESCALA[ESCALA.length - 1][1]})`;
+}
+document.getElementById("barra").style.background =
+  `linear-gradient(to right, ${ESCALA.map(([t]) => `${colorTemp(t)} ${((t + 10) / 50) * 100}%`).join(", ")})`;
+
+const RUMBOS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
+const rumbo = g => RUMBOS[Math.round(g / 22.5) % 16];
+
+function relativo(iso) {
+  if (!iso) return { texto: "Hora desconocida", viejo: true };
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  const hoy = fmtFecha.format(new Date()).split(",")[0] === fmtFecha.format(new Date(iso)).split(",")[0];
+  const hora = hoy ? fmtHora.format(new Date(iso)) : fmtFecha.format(new Date(iso));
+  const hace = min < 60 ? `hace ${Math.max(min, 0)} min` : `hace ${Math.round(min / 60)} h`;
+  return { texto: `Observado ${hora} (${hace})`, viejo: min > HORAS_VIEJO * 60 };
+}
+
+function el(etiqueta, props = {}, ...hijos) {
+  const n = document.createElement(etiqueta);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const h of hijos) if (h != null) n.append(h);
+  return n;
+}
+
+// --- Mapa ---
+const movil = matchMedia("(max-width: 700px)");
+const panel = document.getElementById("panel");
+const mapa = L.map("mapa", { zoomControl: false, minZoom: 3, worldCopyJump: true, attributionControl: false });
+L.control.attribution({ position: movil.matches ? "topright" : "bottomright" }).addTo(mapa);
+mapa.fitBounds([[-55.2, -73.6], [-21.7, -53.6]], movil.matches
+  ? { paddingBottomRight: [0, panel.getBoundingClientRect().height] }
+  : { paddingTopLeft: [390, 0] });
+L.control.zoom({ position: "topright" }).addTo(mapa);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(mapa);
+const capa = L.layerGroup().addTo(mapa);
+// Con zoom bajo se dibuja una estación por celda de pantalla (la de mayor prioridad):
+// miles de marcadores superpuestos no se leen y hacen lento el mapa.
+const ZOOM_TODAS = 10;
+const CELDA_PX = 36;
+const LISTA_INICIAL = 200;
+const marcadores = new Map(); // id -> { marcador, html, z }
+
+const estado = { datos: null, etag: null, ocultas: new Set(), filtro: "", elegida: null,
+                 porId: new Map(), prioridad: new Map(), tipo: new Map(), fuentes: new Map(),
+                 enVista: null, listaCompleta: false };
+
+// --- Hoja inferior (móvil) ---
+const HOJAS = ["baja", "media", "alta"];
+function hoja(nombre) {
+  if (!movil.matches || panel.dataset.hoja === nombre) return;
+  panel.dataset.hoja = nombre;
+}
+// Altura final de la hoja según su estado (no la actual, que puede estar en transición).
+function altoHoja() {
+  if (!movil.matches) return 0;
+  return { baja: 150, media: window.innerHeight * 0.52, alta: window.innerHeight - 48 }[panel.dataset.hoja];
+}
+(() => {
+  const asa = document.getElementById("asa");
+  let inicio = null;
+  asa.addEventListener("pointerdown", ev => {
+    inicio = { y: ev.clientY, alto: panel.getBoundingClientRect().height, movio: false };
+    asa.setPointerCapture(ev.pointerId);
+    panel.classList.add("arrastrando");
+  });
+  asa.addEventListener("pointermove", ev => {
+    if (!inicio) return;
+    const dy = inicio.y - ev.clientY;
+    if (Math.abs(dy) > 4) inicio.movio = true;
+    panel.style.height = `${Math.max(90, Math.min(window.innerHeight - 40, inicio.alto + dy))}px`;
+  });
+  asa.addEventListener("pointerup", () => {
+    if (!inicio) return;
+    panel.classList.remove("arrastrando");
+    const final = panel.getBoundingClientRect().height;
+    panel.style.height = "";
+    if (!inicio.movio) {  // un toque alterna entre las alturas
+      hoja(HOJAS[(HOJAS.indexOf(panel.dataset.hoja) + 1) % HOJAS.length]);
+    } else {  // al soltar se acomoda en la altura más cercana
+      const alturas = { baja: 150, media: window.innerHeight * 0.52, alta: window.innerHeight - 48 };
+      hoja(HOJAS.reduce((a, b) => Math.abs(alturas[a] - final) <= Math.abs(alturas[b] - final) ? a : b));
+    }
+    inicio = null;
+  });
+})();
+
+// Centra el mapa en un punto dejando a la vista la parte que no tapa la hoja inferior.
+function centrar(latlng, zoom) {
+  const opciones = { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.8 };
+  const alto = altoHoja();
+  if (!alto) return mapa.flyTo(latlng, zoom, opciones);
+  const destino = mapa.unproject(mapa.project(latlng, zoom).add([0, alto / 2]), zoom);
+  mapa.flyTo(destino, zoom, opciones);
+}
+
+function nombreFuente(id) {
+  return (estado.fuentes.get(id) || {}).nombre || id;
+}
+
+// Solo se usan como enlace direcciones web (nunca javascript: u otros esquemas).
+function enlaceSeguro(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
+function enlaceExterno(url, texto) {
+  return el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, texto);
+}
+
+function normalizar(s) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+// Índices que se arman una vez por cada respuesta nueva del servidor.
+function prepararDatos(d) {
+  estado.porId = new Map(d.estaciones.map(e => [e.id, e]));
+  estado.prioridad = new Map(d.fuentes.map((f, i) => [f.id, i]));
+  estado.tipo = new Map(d.fuentes.map(f => [f.id, f.tipo]));
+  estado.fuentes = new Map(d.fuentes.map(f => [f.id, f]));
+  for (const e of d.estaciones) e._nombre = normalizar(e.nombre);
+}
+
+function visibles() {
+  if (!estado.datos) return [];
+  const f = normalizar(estado.filtro);
+  return estado.datos.estaciones.filter(e => !estado.ocultas.has(e.fuente) && (!f || e._nombre.includes(f)));
+}
+
+function esPrivada(e) {
+  return estado.tipo.get(e.fuente) === "privada";
+}
+
+// Menor es más importante: la elegida, después por orden de fuente y las que tienen temperatura.
+function prioridad(e) {
+  if (e.id === estado.elegida) return -1;
+  return (estado.prioridad.get(e.fuente) ?? 99) + (e.temp_c == null ? 100 : 0);
+}
+
+function htmlPin(e) {
+  const t = e.temp_c == null ? "—" : `${Math.round(e.temp_c)}°`;
+  const clases = ["pin", ["smn", "synop"].includes(e.fuente) ? "smn" : "", OFICIALES.has(e.fuente) ? "" : "red",
+                  esPrivada(e) ? "privada" : "",
+                  e.temp_c == null ? "sin-dato" : "", estado.elegida === e.id ? "elegido" : ""].filter(Boolean).join(" ");
+  const color = colorTemp(e.temp_c) || "#b9c3c9";
+  return `<span class="${clases}" style="--c:${color}">${t}</span>`;
+}
+
+function icono(html) {
+  return L.divIcon({ className: "pin-caja", iconSize: null, html });
+}
+
+function dibujarMapa() {
+  if (!estado.datos) return;
+  const zoom = mapa.getZoom();
+  const vista = mapa.getBounds().pad(0.25);
+  let lista = visibles().filter(e => vista.contains([e.lat, e.lon]));
+  const enVista = lista.length;
+  if (zoom < ZOOM_TODAS) {
+    lista.sort((a, b) => prioridad(a) - prioridad(b));
+    const ocupadas = new Set();
+    lista = lista.filter(e => {
+      const p = mapa.project([e.lat, e.lon], zoom);
+      const celda = `${Math.floor(p.x / CELDA_PX)}:${Math.floor(p.y / CELDA_PX)}`;
+      if (ocupadas.has(celda) && e.id !== estado.elegida) return false;
+      ocupadas.add(celda);
+      return true;
+    });
+  }
+
+  // Se reusan los marcadores existentes y solo se tocan los que cambiaron.
+  const quedan = new Set(lista.map(e => e.id));
+  for (const [id, m] of marcadores) {
+    if (!quedan.has(id)) { capa.removeLayer(m.marcador); marcadores.delete(id); }
+  }
+  for (const e of lista) {
+    const html = htmlPin(e);
+    const z = estado.elegida === e.id ? 2000 : (OFICIALES.has(e.fuente) ? 500 : 0);
+    const m = marcadores.get(e.id);
+    if (!m) {
+      const marcador = L.marker([e.lat, e.lon], { icon: icono(html), title: `${e.nombre} · ${nombreFuente(e.fuente)}`,
+                                                 keyboard: true, riseOnHover: true, zIndexOffset: z })
+        .on("click", () => elegir(e.id, false))
+        .addTo(capa);
+      marcadores.set(e.id, { marcador, html, z });
+    } else {
+      if (m.html !== html) { m.marcador.setIcon(icono(html)); m.html = html; }
+      if (m.z !== z) { m.marcador.setZIndexOffset(z); m.z = z; }
+    }
+  }
+  estado.enVista = { dibujadas: lista.length, total: enVista };
+  dibujarEstado();
+}
+mapa.on("moveend", dibujarMapa);
+
+// --- Panel ---
+function dibujarEstado() {
+  const nodo = document.getElementById("estado");
+  const d = estado.datos;
+  if (!d) return;
+  const total = d.estaciones.length;
+  const cargando = d.fuentes.filter(f => f.cargando).length;
+  const v = estado.enVista;
+  nodo.className = "estado";
+  nodo.textContent = `${total} estaciones, datos de las ${fmtHora.format(new Date(d.generado_utc))}` +
+    (cargando ? ` (actualizando ${cargando} ${cargando === 1 ? "fuente" : "fuentes"}…)` : "") +
+    (v && v.dibujadas < v.total ? ` · En el mapa: ${v.dibujadas} de ${v.total} en esta zona; acercá para ver todas.` : "");
+}
+
+function dibujarFuentes() {
+  const caja = document.getElementById("fuentes");
+  caja.replaceChildren();
+  let titulo = null;
+  for (const f of estado.datos.fuentes) {
+    const grupo = f.tipo === "privada" ? "Redes privadas y ciudadanas" : "Redes públicas";
+    if (grupo !== titulo) caja.append(el("p", { class: "fuentes-titulo" }, titulo = grupo));
+    const casilla = el("input", { type: "checkbox", onchange: ev => {
+      ev.target.checked ? estado.ocultas.delete(f.id) : estado.ocultas.add(f.id);
+      redibujar();
+    }});
+    casilla.checked = !estado.ocultas.has(f.id);
+    const sitio = enlaceSeguro(f.sitio);
+    caja.append(el("label", { class: "fuente" }, casilla, f.nombre,
+      sitio ? enlaceExterno(sitio, "↗") : null,
+      el("span", { class: "cuenta" }, String(f.mostradas))));
+    if (f.cargando && !f.recibidas && f.ok) caja.append(el("p", { class: "fuente-nota suave" }, "Cargando…"));
+    else if (!f.ok) caja.append(el("p", { class: "fuente-nota" }, `No respondió: ${f.error}`));
+    else if (f.sin_ubicar.length) caja.append(el("p", { class: "fuente-nota" },
+      `${f.sin_ubicar.length} sin ubicar en el mapa (ver la consola del servidor)`));
+  }
+  const ocultas = estado.ocultas.size;
+  document.getElementById("fuentes-resumen").textContent =
+    `(${estado.datos.fuentes.length}${ocultas ? `, ${ocultas} ocultas` : ""})`;
+}
+
+function dibujarLista() {
+  const cuerpo = document.getElementById("cuerpo");
+  const lista = visibles().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  if (!lista.length) {
+    cuerpo.replaceChildren(el("p", { class: "vacio" },
+      estado.filtro ? "Ninguna estación coincide con la búsqueda." : "No hay estaciones para mostrar con las fuentes elegidas."));
+    return;
+  }
+  // Armar miles de botones de una vez traba el panel: se muestran de a poco.
+  const mostrar = estado.listaCompleta ? lista : lista.slice(0, LISTA_INICIAL);
+  cuerpo.replaceChildren(el("ul", { class: "lista" }, ...mostrar.map(e =>
+    el("li", {}, el("button", { type: "button", onclick: () => elegir(e.id, true) },
+      el("span", { class: "nombre" }, e.nombre, el("small", {}, nombreFuente(e.fuente))),
+      el("span", { class: "t" }, e.temp_c == null ? "—" : `${fmt.format(e.temp_c)}°`)))
+  )), mostrar.length < lista.length ? el("p", { class: "vacio" },
+    `Se muestran ${mostrar.length} de ${lista.length}. Usá la búsqueda o `,
+    el("button", { type: "button", onclick: () => { estado.listaCompleta = true; dibujarLista(); } }, "ver todas")) : null);
+}
+
+function fila(nombre, valor) {
+  return valor == null || valor === "" ? [] : [el("dt", {}, nombre), el("dd", {}, valor)];
+}
+
+function textoViento(e) {
+  if (e.viento_kmh == null) return null;
+  if (e.viento_kmh === 0) return "Calma";
+  const desde = e.viento_dir_grados == null ? "variable" : `del ${rumbo(e.viento_dir_grados)}`;
+  const rafaga = e.rafaga_kmh ? ` | ráfagas ${e.rafaga_kmh}` : "";
+  return `${e.viento_kmh} km/h ${desde}${rafaga}`;
+}
+
+function dibujarDetalle(e) {
+  const cuerpo = document.getElementById("cuerpo");
+  const fuente = estado.fuentes.get(e.fuente);
+  const nombre = fuente ? fuente.nombre : e.fuente;
+  const enlace = enlaceSeguro(e.enlace) || enlaceSeguro(fuente && fuente.sitio);
+  const obs = relativo(e.hora_utc);
+  const temp = e.temp_c == null ? "—" : `${fmt.format(e.temp_c)}°`;
+  cuerpo.replaceChildren(el("section", { class: "detalle" },
+    el("button", { type: "button", class: "volver", onclick: () => elegir(null) }, "Volver a la lista"),
+    el("h2", {}, e.nombre),
+    el("p", { class: "sub" }, "Fuente: ", enlace ? enlaceExterno(enlace, nombre) : nombre),
+    el("p", { class: obs.viejo ? "sub viejo" : "sub" }, obs.viejo ? `${obs.texto}. Dato desactualizado.` : obs.texto),
+    el("div", { class: "grande" },
+      el("span", { class: "temp", style: `--c:${colorTemp(e.temp_c) || "inherit"}` }, temp),
+      el("div", {},
+        el("div", { class: "cielo" }, e.cielo || ""),
+        e.sensacion_c != null ? el("div", { class: "sens" }, `Sensación ${fmt.format(e.sensacion_c)}°`) : null)),
+    el("dl", { class: "datos" },
+      ...fila("Viento", textoViento(e)),
+      ...fila("Punto de rocío", e.rocio_c == null ? null : `${fmt.format(e.rocio_c)} °C`),
+      ...fila("Humedad", e.humedad_pct == null ? null : `${fmt.format(e.humedad_pct)} %`),
+      ...fila("Presión", e.presion_hpa == null ? null : `${fmt.format(e.presion_hpa)} hPa`),
+      ...fila("Visibilidad", e.visibilidad),
+      ...fila("Fenómenos", e.fenomenos),
+      ...fila("Altura", e.altura_m == null ? null : `${fmt.format(e.altura_m)} m`),
+      ...fila("Ubicación", `${e.lat.toFixed(3)}, ${e.lon.toFixed(3)}`)),
+    e.crudo ? el("div", { class: "crudo" }, e.crudo) : null,
+    enlace ? el("p", { class: "origen" }, enlaceExterno(enlace,
+      enlaceSeguro(e.enlace) ? `Ver esta estación en ${nombre}` : `Ir al sitio de ${nombre}`)) : null
+  ));
+  cuerpo.scrollTop = 0;
+}
+
+function elegir(id, volar) {
+  estado.elegida = id;
+  const e = id && estado.porId.get(id);
+  if (e) {
+    dibujarDetalle(e);
+    if (movil.matches) {
+      document.activeElement.blur();  // cierra el teclado si se eligió desde la búsqueda
+      if (panel.dataset.hoja !== "media") hoja("media");
+    }
+    if (volar) {
+      centrar([e.lat, e.lon], Math.max(mapa.getZoom(), 9));
+    } else if (movil.matches) {
+      // Si el punto quedaría debajo de la hoja, se corre el mapa para verlo.
+      const y = mapa.latLngToContainerPoint([e.lat, e.lon]).y;
+      const limite = window.innerHeight - altoHoja() - 40;
+      if (y > limite) mapa.panBy([0, y - limite + 60]);
+    }
+  } else {
+    estado.elegida = null;
+    dibujarLista();
+  }
+  dibujarMapa();
+}
+
+function redibujar() {
+  dibujarEstado();
+  dibujarFuentes();
+  dibujarMapa();
+  const e = estado.elegida && estado.porId.get(estado.elegida);
+  e ? dibujarDetalle(e) : (estado.elegida = null, dibujarLista());
+}
+
+async function cargar(forzar = false) {
+  clearTimeout(estado.reintento);
+  const nodo = document.getElementById("estado");
+  if (forzar || !estado.datos) {
+    nodo.className = "estado";
+    nodo.textContent = forzar ? "Consultando las fuentes…" : "Cargando datos…";
+  }
+  try {
+    // no-cache: el navegador revalida con el ETag y, si no hay datos nuevos, el
+    // servidor contesta 304 sin reenviar nada.
+    const r = await fetch("/api/estaciones" + (forzar ? "?actualizar=1" : ""), { cache: "no-cache" });
+    if (!r.ok) throw new Error(`el servidor respondió ${r.status}`);
+    const etag = r.headers.get("ETag");
+    if (!etag || etag !== estado.etag) {
+      const datos = await r.json();
+      prepararDatos(datos);
+      estado.datos = datos;
+      estado.etag = etag;
+      redibujar();
+    } else {
+      dibujarEstado();
+    }
+    // Mientras haya fuentes actualizándose, se vuelve a pedir en unos segundos.
+    if (estado.datos.fuentes.some(f => f.cargando)) estado.reintento = setTimeout(cargar, REINTENTO_CARGANDO_MS);
+  } catch (err) {
+    nodo.className = "estado error";
+    nodo.textContent = `No se pudieron cargar los datos (${err.message}). Revisá que servidor.py siga corriendo.`;
+  }
+}
+
+let esperaBusqueda;
+document.getElementById("buscar").addEventListener("input", ev => {
+  clearTimeout(esperaBusqueda);
+  esperaBusqueda = setTimeout(() => {
+    estado.filtro = ev.target.value;
+    if (!estado.datos) return;
+    estado.elegida = null;
+    estado.listaCompleta = false;
+    dibujarLista();
+    dibujarMapa();
+  }, 150);
+});
+document.getElementById("actualizar").addEventListener("click", () => cargar(true));
+document.getElementById("buscar").addEventListener("focus", () => hoja("alta"));
+// En la computadora el listado de fuentes arranca abierto; en el celular, cerrado.
+document.getElementById("fuentes-caja").open = !movil.matches;
+movil.addEventListener("change", () => {
+  document.getElementById("fuentes-caja").open = !movil.matches;
+  panel.style.height = "";
+});
+
+cargar();
+setInterval(cargar, REFRESCO_MS);
+</script>
+</body>
+</html>
