@@ -109,6 +109,16 @@ Los valores imposibles (humedad 0 o 255, 50 °C, presión 0, etc., que algunas r
 
 Antes de publicar el mapa, revisá las condiciones de uso de cada red.
 
+## Publicado en GitHub Pages
+
+El mapa está publicado en **https://franconeirotti.github.io/Clima-publico/**, sin servidor propio:
+
+- `.github/workflows/datos.yml` corre cada 5 minutos (GitHub suele demorar los programados unos minutos más): ejecuta `python servidor.py --generar salida`, que hace una sola pasada respetando el intervalo de cada fuente, y sube `estaciones.json` junto con la carpeta `cache/` a la rama `datos` (un único commit que se reemplaza en cada corrida).
+- La página lee los datos de `https://raw.githubusercontent.com/FrancoNeirotti/Clima-publico/datos/estaciones.json` (con hasta 5 minutos de caché del CDN).
+- `.github/workflows/pages.yml` despliega `static/index.html` solo cuando cambia `main`, apuntando la etiqueta `<meta name="url-datos">` a ese archivo.
+
+Si una fuente no responde desde los servidores de GitHub, se publican sus últimos datos buenos (hasta 12 horas) y el panel marca el error. GitHub pausa los workflows programados tras 60 días sin actividad en el repositorio; se reactivan desde la pestaña Actions.
+
 ## Estructura
 
 ```
@@ -128,4 +138,5 @@ fuentes/inta.py             INTA SIGA
 fuentes/snih.py             Sistema Nacional de Información Hídrica
 fuentes/ina.py              Instituto Nacional del Agua
 static/index.html           mapa (Leaflet + OpenStreetMap)
+.github/workflows/          datos cada 5 minutos (rama datos) y despliegue en GitHub Pages
 ```

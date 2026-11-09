@@ -2,6 +2,7 @@
 
 Uso:  python servidor.py            (abre http://127.0.0.1:8000)
       python servidor.py --puerto 8080 --sin-navegador
+      python servidor.py --generar salida   (una sola pasada: escribe salida/estaciones.json)
 
 Cada fuente se actualiza sola en segundo plano, con su propio intervalo
 (MINUTOS en cada módulo). El mapa recibe lo que haya en ese momento, así las
@@ -190,6 +191,37 @@ def datos(forzar=False):
         return _combinado["datos"]
 
 
+def generar(carpeta, limite_segundos):
+    """Una sola pasada, sin servidor (para publicarlo como sitio estático): retoma la
+    caché, actualiza solo las fuentes vencidas y escribe <carpeta>/estaciones.json."""
+    _cargar_guardado()
+    _programar()
+    fin = time.time() + limite_segundos
+    while time.time() < fin:
+        with _candado:
+            if not any(e["cargando"] for e in _estado.values()):
+                break
+        time.sleep(1)
+    with _candado:
+        for fuente in FUENTES:
+            est = _estado[fuente.ID]
+            if est["cargando"]:  # se publica igual, con los últimos datos guardados
+                est.update(cargando=False, cargada=True,
+                           error=f"tardó más de {limite_segundos} s; se muestran los últimos datos guardados")
+                print(f"[{fuente.ID}] error: {est['error']}", file=sys.stderr)
+        respuesta = _serializar(_combinar())
+    carpeta = Path(carpeta)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    temporal = carpeta / "estaciones.json.tmp"
+    temporal.write_bytes(respuesta["cuerpo"])
+    temporal.replace(carpeta / "estaciones.json")
+    resumen = json.loads(respuesta["cuerpo"])
+    print(f"{len(resumen['estaciones'])} estaciones escritas en {carpeta / 'estaciones.json'}")
+    for f in resumen["fuentes"]:
+        print(f"  {'ok   ' if f['ok'] else 'FALLA'} {f['id']:<17} {f['mostradas']:>4} mostradas"
+              + (f"  ({f['error']})" if f["error"] else ""))
+
+
 class Manejador(BaseHTTPRequestHandler):
     def do_GET(self):
         ruta, _, consulta = self.path.partition("?")
@@ -231,7 +263,16 @@ def main():
     p.add_argument("--sin-navegador", action="store_true")
     p.add_argument("--red-local", action="store_true",
                    help="aceptar conexiones de otros equipos de la red (p. ej. para abrirlo en el celular)")
+    p.add_argument("--generar", metavar="CARPETA",
+                   help="no levantar el servidor: actualizar las fuentes vencidas una vez y "
+                        "escribir CARPETA/estaciones.json (para publicarlo como sitio estático)")
+    p.add_argument("--limite", type=int, default=480, metavar="SEGUNDOS",
+                   help="con --generar, cuánto esperar a las fuentes lentas (480 por defecto)")
     args = p.parse_args()
+
+    if args.generar:
+        generar(args.generar, args.limite)
+        return
 
     servidor = ThreadingHTTPServer(("0.0.0.0" if args.red_local else "127.0.0.1", args.puerto), Manejador)
     _cargar_guardado()

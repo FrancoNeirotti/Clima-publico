@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- De dónde salen los datos. Con servidor.py es su API; al publicarse en GitHub Pages
+     el workflow lo reemplaza por el estaciones.json de la rama "datos". -->
+<meta name="url-datos" content="/api/estaciones">
 <title>Estaciones meteorológicas de Argentina</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -226,6 +229,9 @@
 const ZONA = "America/Argentina/Buenos_Aires";
 const REFRESCO_MS = 5 * 60 * 1000;
 const REINTENTO_CARGANDO_MS = 5000;
+const URL_DATOS = document.querySelector('meta[name="url-datos"]').content;
+// Sin servidor.py (sitio estático) no se puede pedir que consulte las fuentes en el momento.
+const CON_SERVIDOR = URL_DATOS.startsWith("/api/");
 const HORAS_VIEJO = 3;
 // Redes oficiales del SMN y aeropuertos: se dibujan más grandes y por encima del resto.
 const OFICIALES = new Set(["metar", "smn", "synop"]);
@@ -587,6 +593,7 @@ function redibujar() {
 
 async function cargar(forzar = false) {
   clearTimeout(estado.reintento);
+  forzar = forzar && CON_SERVIDOR;
   const nodo = document.getElementById("estado");
   if (forzar || !estado.datos) {
     nodo.className = "estado";
@@ -595,7 +602,7 @@ async function cargar(forzar = false) {
   try {
     // no-cache: el navegador revalida con el ETag y, si no hay datos nuevos, el
     // servidor contesta 304 sin reenviar nada.
-    const r = await fetch("/api/estaciones" + (forzar ? "?actualizar=1" : ""), { cache: "no-cache" });
+    const r = await fetch(URL_DATOS + (forzar ? "?actualizar=1" : ""), { cache: "no-cache" });
     if (!r.ok) throw new Error(`el servidor respondió ${r.status}`);
     const etag = r.headers.get("ETag");
     if (!etag || etag !== estado.etag) {
@@ -611,7 +618,8 @@ async function cargar(forzar = false) {
     if (estado.datos.fuentes.some(f => f.cargando)) estado.reintento = setTimeout(cargar, REINTENTO_CARGANDO_MS);
   } catch (err) {
     nodo.className = "estado error";
-    nodo.textContent = `No se pudieron cargar los datos (${err.message}). Revisá que servidor.py siga corriendo.`;
+    nodo.textContent = `No se pudieron cargar los datos (${err.message}).` +
+      (CON_SERVIDOR ? " Revisá que servidor.py siga corriendo." : " Se reintenta en unos minutos.");
   }
 }
 

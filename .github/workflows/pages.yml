@@ -1,0 +1,41 @@
+# Publica el mapa en GitHub Pages. Solo cuando cambia main: los datos no se
+# despliegan acá, la página los lee de la rama "datos" (ver datos.yml).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Armar el sitio
+        run: |
+          mkdir _site
+          url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/datos/estaciones.json"
+          sed "s#<meta name=\"url-datos\" content=\"[^\"]*\">#<meta name=\"url-datos\" content=\"${url}\">#" \
+            static/index.html > _site/index.html
+          grep -q "content=\"${url}\"" _site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: despliegue
+        uses: actions/deploy-pages@v4

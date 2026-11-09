@@ -1,0 +1,51 @@
+# Actualiza los datos del mapa publicado. Retoma la caché de la corrida anterior (rama
+# "datos"), consulta solo las fuentes vencidas y vuelve a subir esa rama como un único
+# commit (force-push), así el historial no crece.
+name: Datos
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: datos
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Recuperar la caché anterior
+        run: |
+          if git fetch --depth=1 origin datos; then
+            git archive FETCH_HEAD cache | tar -x || true
+          fi
+
+      - name: Generar estaciones.json
+        run: python servidor.py --generar salida --limite 480
+
+      - name: Publicar en la rama datos
+        run: |
+          mkdir publicar
+          cp -r cache publicar/cache
+          cp salida/estaciones.json publicar/
+          cd publicar
+          git init -q -b datos
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Datos $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" datos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
