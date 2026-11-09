@@ -2,7 +2,9 @@
 <html lang="es-AR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16232c" media="(prefers-color-scheme: dark)">
 <!-- De dónde salen los datos. Con servidor.py es su API; al publicarse en GitHub Pages
      el workflow lo reemplaza por el estaciones.json de la rama "datos". -->
 <meta name="url-datos" content="/api/estaciones">
@@ -40,6 +42,9 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
     font-family: "Barlow", system-ui, sans-serif;
     color: var(--tinta);
     background: var(--fondo);
@@ -47,6 +52,14 @@
     line-height: 1.4;
   }
   #mapa { position: fixed; inset: 0; background: var(--fondo); }
+  /* Muesca y bordes redondeados de los celulares (viewport-fit=cover). */
+  .leaflet-top { top: env(safe-area-inset-top); }
+  .leaflet-right { right: env(safe-area-inset-right); }
+  .leaflet-bottom { bottom: env(safe-area-inset-bottom); }
+  #zona-segura {
+    position: fixed; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
 
   .panel {
     position: fixed; z-index: 1000;
@@ -56,8 +69,26 @@
     background: var(--panel);
     border-radius: 14px;
     box-shadow: var(--sombra);
+    touch-action: manipulation;
     overflow: hidden;
   }
+  .cuerpo { overscroll-behavior: contain; }
+
+  /* Botón "cerca mío": en la computadora debajo del zoom; en el celular flota sobre la hoja. */
+  .cerca {
+    position: fixed; z-index: 1000;
+    top: calc(84px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right));
+    width: 34px; height: 34px; padding: 0;
+    display: grid; place-items: center;
+    background: var(--panel); color: var(--acento);
+    border: 2px solid rgba(0, 0, 0, .2); border-radius: 4px;
+    background-clip: padding-box;
+  }
+  .cerca[hidden] { display: none; }
+  .cerca svg { width: 20px; height: 20px; }
+  .cerca[aria-busy="true"] svg { animation: girar 1s linear infinite; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+  .yo { background: #1a73e8; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 1px 4px rgba(0,0,0,.4); }
   .cabecera { padding: 18px 18px 12px; border-bottom: 1px solid var(--linea); }
   h1 {
     font-family: var(--numeros);
@@ -80,7 +111,7 @@
     border: 1px solid var(--linea); border-radius: 8px;
     padding: 8px 12px; cursor: pointer;
   }
-  button:hover { border-color: var(--acento); }
+  @media (hover: hover) { button:hover { border-color: var(--acento); } }
   :focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 
   .fuentes { padding: 10px 18px; border-bottom: 1px solid var(--linea); display: grid; gap: 6px; }
@@ -97,7 +128,8 @@
     border: 0; border-radius: 0; padding: 7px 18px;
     color: var(--tinta); font-weight: 500; text-align: left;
   }
-  .lista button:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); }
+  @media (hover: hover) { .lista button:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); } }
+  .lista button:active { background: color-mix(in srgb, var(--acento) 12%, transparent); }
   .lista .t { margin-left: auto; font-family: var(--numeros); font-weight: 600; }
   .lista .nombre { min-width: 0; }
   .lista small { display: block; font-size: .78rem; font-weight: 400; color: var(--tinta-suave); }
@@ -163,6 +195,29 @@
                     letter-spacing: .04em; color: var(--tinta-suave); }
   .pin.elegido { outline: 3px solid var(--tinta); outline-offset: 1px; z-index: 1; }
   .pin.sin-dato { background: #b9c3c9; }
+  /* Con el dedo, los marcadores se pueden tocar aunque sean chicos. */
+  @media (pointer: coarse) {
+    .pin::after { content: ""; position: absolute; inset: -9px -5px; }
+    .leaflet-touch .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
+    .cerca { width: 48px; height: 48px; top: calc(112px + env(safe-area-inset-top)); }
+    input[type="search"], button { min-height: 44px; }
+  }
+
+  /* Celular acostado: el panel lateral se achica para dejar lugar al mapa. */
+  @media (max-height: 500px) and (min-width: 701px) {
+    .panel {
+      top: calc(8px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom));
+      left: calc(8px + env(safe-area-inset-left)); width: 320px;
+    }
+    h1 { display: none; }
+    .cabecera { padding: 12px 14px 10px; }
+    .estado { font-size: .82rem; }
+    .acciones { margin-top: 8px; }
+    .fuentes-caja > summary { padding: 12px 14px; }
+    .fuentes { padding: 6px 14px 10px; }
+    .lista button { padding: 9px 14px; }
+    .escala { display: none; }
+  }
 
   /* Móvil: el panel es una hoja inferior con tres alturas (baja, media, alta). */
   @media (max-width: 700px) {
@@ -170,46 +225,77 @@
       top: auto; left: 0; right: 0; bottom: 0; width: auto;
       height: var(--alto-hoja); border-radius: 16px 16px 0 0;
       transition: height .25s ease;
-      padding-bottom: env(safe-area-inset-bottom);
+      padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overflow: visible;  /* deja ver el botón "cerca mío" que flota encima */
     }
-    .panel[data-hoja="baja"] { --alto-hoja: 150px; }
+    .panel[data-hoja="baja"] { --alto-hoja: calc(146px + env(safe-area-inset-bottom)); }
     .panel[data-hoja="media"] { --alto-hoja: 52dvh; }
-    .panel[data-hoja="alta"] { --alto-hoja: calc(100dvh - 48px); }
+    .panel[data-hoja="alta"] { --alto-hoja: calc(100dvh - 48px - env(safe-area-inset-top)); }
     .panel.arrastrando { transition: none; }
+    .cuerpo { min-height: 0; }
     .asa {
       display: flex; justify-content: center; align-items: center;
-      width: 100%; height: 26px; padding: 0; border: 0; border-radius: 0;
+      width: 100%; height: 30px; min-height: 0; padding: 0; border: 0; border-radius: 16px 16px 0 0;
       flex: none; touch-action: none; cursor: grab;
     }
-    .asa span { width: 44px; height: 5px; border-radius: 3px; background: var(--linea); }
-    .cabecera { padding: 0 14px 10px; }
+    .asa span { width: 44px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--tinta) 25%, transparent); }
+    .cabecera { padding: 0 14px 10px; touch-action: none; }
     h1 { display: none; }
     .estado { font-size: .8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .acciones { margin-top: 8px; }
-    input[type="search"] { font-size: 16px; } /* menos de 16px hace que iOS haga zoom al tocar */
-    button { padding: 9px 12px; }
-    .fuentes-caja > summary { padding: 10px 14px; }
-    .fuentes { padding: 6px 14px 10px; max-height: none; }
-    .fuente { padding: 4px 0; }
-    .lista button { padding: 11px 14px; }
-    .detalle { padding: 12px 14px 20px; }
+    input[type="search"] { font-size: 16px; min-height: 44px; } /* menos de 16px hace que iOS haga zoom al tocar */
+    button { padding: 9px 12px; min-height: 44px; }
+    .fuentes-caja > summary { padding: 0 14px; min-height: 44px; display: flex; align-items: center; gap: 6px; }
+    .fuentes-caja > summary::before { content: "▸"; transition: transform .2s; }
+    .fuentes-caja[open] > summary::before { transform: rotate(90deg); }
+    .fuentes-caja > summary::-webkit-details-marker { display: none; }
+    .fuentes-caja > summary { list-style: none; }
+    .fuentes { padding: 0 14px 10px; max-height: none; gap: 0; }
+    .fuente { align-items: center; min-height: 44px; padding: 0; }
+    .fuente input { width: 20px; height: 20px; margin: 0 4px 0 0; flex: none; }
+    .fuente a { display: grid; place-items: center; min-width: 36px; min-height: 44px; margin: 0 -8px; }
+    .fuente-nota { margin: -6px 0 6px 28px; }
+    .lista button { padding: 11px 14px; min-height: 52px; }
+    .detalle { padding: 4px 14px 20px; }
+    .detalle .volver { margin-bottom: 10px; }
     .grande .temp { font-size: 3.4rem; }
     .escala { display: none; }
     .leaflet-control-zoom { display: none; }
+    /* Viendo una estación se esconde la búsqueda para que el detalle entre en la hoja. */
+    .panel.con-detalle .cabecera, .panel.con-detalle .fuentes-caja { display: none; }
+    .cerca {
+      position: absolute; top: -58px; right: calc(12px + env(safe-area-inset-right));
+      width: 46px; height: 46px; min-height: 0;
+      border: 0; border-radius: 50%; box-shadow: var(--sombra);
+      transition: opacity .2s;
+    }
+    .cerca svg { width: 22px; height: 22px; }
+    .panel[data-hoja="alta"] .cerca { opacity: 0; pointer-events: none; }
   }
-  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+    .panel, .cerca, .fuentes-caja > summary::before { transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <div id="mapa" role="application" aria-label="Mapa de estaciones"></div>
+<div id="zona-segura" aria-hidden="true"></div>
 
-<aside class="panel" id="panel" data-hoja="media">
+<aside class="panel" id="panel" data-hoja="baja">
+  <button type="button" class="cerca" id="cerca" hidden aria-label="Estaciones cerca mío" title="Estaciones cerca mío">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+      <path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>
+    </svg>
+  </button>
   <button type="button" class="asa" id="asa" aria-label="Agrandar o achicar el panel"><span></span></button>
   <div class="cabecera">
     <h1>Estaciones de Argentina</h1>
     <p class="estado" id="estado">Cargando datos…</p>
     <div class="acciones">
-      <input type="search" id="buscar" placeholder="Buscar estación o localidad" aria-label="Buscar estación">
+      <input type="search" id="buscar" placeholder="Buscar estación o localidad" aria-label="Buscar estación"
+             enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false">
       <button type="button" id="actualizar">Actualizar</button>
     </div>
   </div>
@@ -289,8 +375,8 @@ const panel = document.getElementById("panel");
 const mapa = L.map("mapa", { zoomControl: false, minZoom: 3, worldCopyJump: true, attributionControl: false });
 L.control.attribution({ position: movil.matches ? "topright" : "bottomright" }).addTo(mapa);
 mapa.fitBounds([[-55.2, -73.6], [-21.7, -53.6]], movil.matches
-  ? { paddingBottomRight: [0, panel.getBoundingClientRect().height] }
-  : { paddingTopLeft: [390, 0] });
+  ? { paddingTopLeft: [0, 20], paddingBottomRight: [0, panel.getBoundingClientRect().height + 20] }
+  : { paddingTopLeft: [panel.getBoundingClientRect().right + 10, 0] });
 L.control.zoom({ position: "topright" }).addTo(mapa);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 18,
@@ -300,13 +386,14 @@ const capa = L.layerGroup().addTo(mapa);
 // Con zoom bajo se dibuja una estación por celda de pantalla (la de mayor prioridad):
 // miles de marcadores superpuestos no se leen y hacen lento el mapa.
 const ZOOM_TODAS = 10;
-const CELDA_PX = 36;
+// Con el dedo se deja más lugar entre marcadores para no tocar el de al lado.
+const CELDA_PX = matchMedia("(pointer: coarse)").matches ? 44 : 36;
 const LISTA_INICIAL = 200;
 const marcadores = new Map(); // id -> { marcador, html, z }
 
 const estado = { datos: null, etag: null, ocultas: new Set(), filtro: "", elegida: null,
                  porId: new Map(), prioridad: new Map(), tipo: new Map(), fuentes: new Map(),
-                 enVista: null, listaCompleta: false };
+                 enVista: null, listaCompleta: false, ubicacion: null };
 
 // --- Hoja inferior (móvil) ---
 const HOJAS = ["baja", "media", "alta"];
@@ -314,39 +401,77 @@ function hoja(nombre) {
   if (!movil.matches || panel.dataset.hoja === nombre) return;
   panel.dataset.hoja = nombre;
 }
-// Altura final de la hoja según su estado (no la actual, que puede estar en transición).
+// Altura final de cada estado de la hoja (no la actual, que puede estar en transición).
+// Tiene que coincidir con los --alto-hoja del CSS.
+function alturas() {
+  const seguro = getComputedStyle(document.getElementById("zona-segura"));
+  const abajo = parseFloat(seguro.paddingBottom) || 0, arriba = parseFloat(seguro.paddingTop) || 0;
+  const alto = window.innerHeight;
+  return { baja: 146 + abajo, media: alto * 0.52, alta: alto - 48 - arriba };
+}
 function altoHoja() {
   if (!movil.matches) return 0;
-  return { baja: 150, media: window.innerHeight * 0.52, alta: window.innerHeight - 48 }[panel.dataset.hoja];
+  return alturas()[panel.dataset.hoja];
 }
+// Se arrastra desde el asa o desde cualquier parte libre de la cabecera.
+// Un toque en el asa alterna las alturas; un deslizamiento rápido pasa a la siguiente.
 (() => {
   const asa = document.getElementById("asa");
+  const cabecera = panel.querySelector(".cabecera");
   let inicio = null;
-  asa.addEventListener("pointerdown", ev => {
-    inicio = { y: ev.clientY, alto: panel.getBoundingClientRect().height, movio: false };
-    asa.setPointerCapture(ev.pointerId);
-    panel.classList.add("arrastrando");
-  });
-  asa.addEventListener("pointermove", ev => {
-    if (!inicio) return;
+  function empezar(ev, capturar) {
+    if (!movil.matches || (ev.pointerType === "mouse" && ev.button !== 0)) return;
+    inicio = { y: ev.clientY, alto: panel.getBoundingClientRect().height, movio: false,
+               id: ev.pointerId, nodo: ev.currentTarget, capturar, muestras: [[ev.timeStamp, ev.clientY]] };
+    if (capturar) { ev.currentTarget.setPointerCapture(ev.pointerId); panel.classList.add("arrastrando"); }
+  }
+  function mover(ev) {
+    if (!inicio || ev.pointerId !== inicio.id) return;
     const dy = inicio.y - ev.clientY;
-    if (Math.abs(dy) > 4) inicio.movio = true;
+    if (!inicio.movio && Math.abs(dy) > 6) {
+      inicio.movio = true;
+      if (!inicio.capturar) { inicio.nodo.setPointerCapture(ev.pointerId); panel.classList.add("arrastrando"); }
+    }
+    if (!inicio.movio) return;
+    inicio.muestras.push([ev.timeStamp, ev.clientY]);
+    if (inicio.muestras.length > 5) inicio.muestras.shift();
     panel.style.height = `${Math.max(90, Math.min(window.innerHeight - 40, inicio.alto + dy))}px`;
-  });
-  asa.addEventListener("pointerup", () => {
-    if (!inicio) return;
+  }
+  function soltar(ev) {
+    if (!inicio || ev.pointerId !== inicio.id) return;
     panel.classList.remove("arrastrando");
     const final = panel.getBoundingClientRect().height;
     panel.style.height = "";
-    if (!inicio.movio) {  // un toque alterna entre las alturas
-      hoja(HOJAS[(HOJAS.indexOf(panel.dataset.hoja) + 1) % HOJAS.length]);
-    } else {  // al soltar se acomoda en la altura más cercana
-      const alturas = { baja: 150, media: window.innerHeight * 0.52, alta: window.innerHeight - 48 };
-      hoja(HOJAS.reduce((a, b) => Math.abs(alturas[a] - final) <= Math.abs(alturas[b] - final) ? a : b));
+    if (!inicio.movio) {
+      if (inicio.nodo === asa && ev.type === "pointerup") hoja(HOJAS[(HOJAS.indexOf(panel.dataset.hoja) + 1) % HOJAS.length]);
+    } else {
+      const [t0, y0] = inicio.muestras[0], [t1, y1] = inicio.muestras[inicio.muestras.length - 1];
+      const velocidad = t1 > t0 ? (y0 - y1) / (t1 - t0) : 0;  // px/ms, positiva hacia arriba
+      const h = alturas();
+      const orden = [...HOJAS].sort((a, b) => h[a] - h[b]);
+      let destino;
+      if (Math.abs(velocidad) > 0.5) {
+        destino = velocidad > 0 ? orden.find(n => h[n] > final + 10) || "alta"
+                                : [...orden].reverse().find(n => h[n] < final - 10) || "baja";
+      } else {
+        destino = orden.reduce((a, b) => Math.abs(h[a] - final) <= Math.abs(h[b] - final) ? a : b);
+      }
+      hoja(destino);
     }
     inicio = null;
+  }
+  asa.addEventListener("pointerdown", ev => empezar(ev, true));
+  cabecera.addEventListener("pointerdown", ev => {
+    if (!ev.target.closest("input, button, a, select, textarea")) empezar(ev, false);
   });
+  for (const nodo of [asa, cabecera]) {
+    nodo.addEventListener("pointermove", mover);
+    nodo.addEventListener("pointerup", soltar);
+    nodo.addEventListener("pointercancel", soltar);
+  }
 })();
+// Al mover el mapa con la hoja bien alta, se baja para dejarlo ver.
+mapa.on("dragstart", () => { if (panel.dataset.hoja === "alta") hoja("media"); });
 
 // Centra el mapa en un punto dejando a la vista la parte que no tapa la hoja inferior.
 function centrar(latlng, zoom) {
@@ -495,9 +620,25 @@ function dibujarFuentes() {
     `(${estado.datos.fuentes.length}${ocultas ? `, ${ocultas} ocultas` : ""})`;
 }
 
+function distanciaKm(e) {
+  const [lat, lon] = estado.ubicacion, rad = Math.PI / 180;
+  const a = Math.sin((e.lat - lat) * rad / 2) ** 2 +
+            Math.cos(lat * rad) * Math.cos(e.lat * rad) * Math.sin((e.lon - lon) * rad / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(a));
+}
+
 function dibujarLista() {
   const cuerpo = document.getElementById("cuerpo");
-  const lista = visibles().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  panel.classList.remove("con-detalle");
+  // Con la ubicación del usuario, la lista va de la más cercana a la más lejana.
+  const cerca = estado.ubicacion && !estado.filtro;
+  const lista = visibles();
+  if (cerca) {
+    for (const e of lista) e._km = distanciaKm(e);
+    lista.sort((a, b) => a._km - b._km);
+  } else {
+    lista.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }
   if (!lista.length) {
     cuerpo.replaceChildren(el("p", { class: "vacio" },
       estado.filtro ? "Ninguna estación coincide con la búsqueda." : "No hay estaciones para mostrar con las fuentes elegidas."));
@@ -505,9 +646,12 @@ function dibujarLista() {
   }
   // Armar miles de botones de una vez traba el panel: se muestran de a poco.
   const mostrar = estado.listaCompleta ? lista : lista.slice(0, LISTA_INICIAL);
-  cuerpo.replaceChildren(el("ul", { class: "lista" }, ...mostrar.map(e =>
+  const km = e => e._km < 10 ? fmt.format(e._km) : Math.round(e._km);
+  cuerpo.replaceChildren(cerca ? el("p", { class: "fuentes-titulo", style: "margin: 10px 18px 0" }, "Más cercanas a vos") : "",
+    el("ul", { class: "lista" }, ...mostrar.map(e =>
     el("li", {}, el("button", { type: "button", onclick: () => elegir(e.id, true) },
-      el("span", { class: "nombre" }, e.nombre, el("small", {}, nombreFuente(e.fuente))),
+      el("span", { class: "nombre" }, e.nombre,
+        el("small", {}, nombreFuente(e.fuente) + (cerca ? ` · a ${km(e)} km` : ""))),
       el("span", { class: "t" }, e.temp_c == null ? "—" : `${fmt.format(e.temp_c)}°`)))
   )), mostrar.length < lista.length ? el("p", { class: "vacio" },
     `Se muestran ${mostrar.length} de ${lista.length}. Usá la búsqueda o `,
@@ -557,9 +701,35 @@ function dibujarDetalle(e) {
       enlaceSeguro(e.enlace) ? `Ver esta estación en ${nombre}` : `Ir al sitio de ${nombre}`)) : null
   ));
   cuerpo.scrollTop = 0;
+  panel.classList.add("con-detalle");
 }
 
-function elegir(id, volar) {
+// El detalle de una estación queda en el historial: el botón "atrás" del celular vuelve
+// a la lista en vez de salir del sitio, y el enlace (#estacion=…) se puede compartir.
+const HASH = "#estacion=";
+function idDelHash() {
+  return location.hash.startsWith(HASH) ? decodeURIComponent(location.hash.slice(HASH.length)) : null;
+}
+function anotarHistorial(id) {
+  const enDetalle = history.state && history.state.estacion;
+  if (id) {
+    const url = HASH + encodeURIComponent(id);
+    enDetalle ? history.replaceState({ estacion: id }, "", url) : history.pushState({ estacion: id }, "", url);
+  } else if (enDetalle) {
+    history.back();  // el popstate termina de volver a la lista
+    return false;
+  } else if (location.hash.startsWith(HASH)) {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  return true;
+}
+window.addEventListener("popstate", () => {
+  const id = idDelHash();
+  elegir(id && estado.porId.has(id) ? id : null, Boolean(id), false);
+});
+
+function elegir(id, volar, historial = true) {
+  if (historial && !anotarHistorial(id)) return;
   estado.elegida = id;
   const e = id && estado.porId.get(id);
   if (e) {
@@ -608,9 +778,16 @@ async function cargar(forzar = false) {
     if (!etag || etag !== estado.etag) {
       const datos = await r.json();
       prepararDatos(datos);
+      const primeraVez = !estado.datos;
       estado.datos = datos;
       estado.etag = etag;
       redibujar();
+      const id = primeraVez && idDelHash();
+      if (id && estado.porId.has(id)) {
+        // Enlace directo a una estación: "atrás" vuelve a la lista, no afuera del sitio.
+        history.replaceState(null, "", location.pathname + location.search);
+        elegir(id, true);
+      }
     } else {
       dibujarEstado();
     }
@@ -629,20 +806,65 @@ document.getElementById("buscar").addEventListener("input", ev => {
   esperaBusqueda = setTimeout(() => {
     estado.filtro = ev.target.value;
     if (!estado.datos) return;
+    if (estado.elegida && history.state && history.state.estacion) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
     estado.elegida = null;
     estado.listaCompleta = false;
     dibujarLista();
     dibujarMapa();
   }, 150);
 });
+// "Buscar" en el teclado del celular lo cierra para dejar ver los resultados.
+document.getElementById("buscar").addEventListener("keydown", ev => {
+  if (ev.key === "Enter") ev.target.blur();
+});
 document.getElementById("actualizar").addEventListener("click", () => cargar(true));
 document.getElementById("buscar").addEventListener("focus", () => hoja("alta"));
-// En la computadora el listado de fuentes arranca abierto; en el celular, cerrado.
-document.getElementById("fuentes-caja").open = !movil.matches;
+// En la computadora el listado de fuentes arranca abierto; en el celular (o acostado), cerrado.
+const compacto = matchMedia("(max-width: 700px), (max-height: 500px)");
+document.getElementById("fuentes-caja").open = !compacto.matches;
+compacto.addEventListener("change", () => {
+  document.getElementById("fuentes-caja").open = !compacto.matches;
+});
 movil.addEventListener("change", () => {
-  document.getElementById("fuentes-caja").open = !movil.matches;
   panel.style.height = "";
 });
+
+// --- Estaciones cerca mío ---
+(() => {
+  const boton = document.getElementById("cerca");
+  if (!("geolocation" in navigator) || !window.isSecureContext) return;
+  boton.hidden = false;
+  let punto = null, radio = null;
+  boton.addEventListener("click", () => {
+    boton.setAttribute("aria-busy", "true");
+    navigator.geolocation.getCurrentPosition(pos => {
+      boton.removeAttribute("aria-busy");
+      const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+      estado.ubicacion = [lat, lon];
+      if (!punto) {
+        radio = L.circle([lat, lon], { radius: accuracy, color: "#1a73e8", weight: 1, fillOpacity: .1, interactive: false }).addTo(mapa);
+        punto = L.marker([lat, lon], { icon: L.divIcon({ className: "yo", iconSize: [18, 18] }),
+                                        interactive: false, keyboard: false, zIndexOffset: 3000 }).addTo(mapa);
+      } else {
+        radio.setLatLng([lat, lon]).setRadius(accuracy);
+        punto.setLatLng([lat, lon]);
+      }
+      if (estado.elegida) elegir(null);
+      else if (estado.datos) dibujarLista();
+      if (movil.matches && panel.dataset.hoja === "baja") hoja("media");
+      centrar([lat, lon], Math.max(mapa.getZoom(), 10));
+    }, err => {
+      boton.removeAttribute("aria-busy");
+      const nodo = document.getElementById("estado");
+      nodo.className = "estado error";
+      nodo.textContent = err.code === err.PERMISSION_DENIED
+        ? "No hay permiso para usar tu ubicación. Activalo en el navegador para ver las estaciones cercanas."
+        : "No se pudo obtener tu ubicación. Probá de nuevo en un rato.";
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 5 * 60 * 1000 });
+  });
+})();
 
 cargar();
 setInterval(cargar, REFRESCO_MS);
