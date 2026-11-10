@@ -20,8 +20,9 @@ URL = "https://app.weathercloud.net/map/bgdevices"
 CABECERAS = {"Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest"}
 EN_LINEA = 2
 # Posiciones de cada lectura: código, nombre, lat, lon, estado, webcam,
-# temp×10, humedad, presión×10, viento (m/s)×10, dirección...
+# temp×10, humedad, presión×10, viento (m/s)×10, dirección, lluvia del día (mm)×10...
 CODIGO, TITULO, LAT, LON, ESTADO, TEMP, HUMEDAD, PRESION, VIENTO, DIRECCION = 0, 1, 2, 3, 4, 6, 7, 8, 9, 10
+LLUVIA = 11
 
 
 def _decimos(valor):
@@ -52,5 +53,6 @@ def obtener():
             presion_hpa=presion_mar(_decimos(d[PRESION])),
             viento_kmh=None if viento is None else round(viento * 3.6, 1),
             viento_dir_grados=numero(d[DIRECCION]) if viento else None,
+            precip_hoy_mm=_decimos(d[LLUVIA]) if len(d) > LLUVIA else None,
         ))
     return salida

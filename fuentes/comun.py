@@ -67,7 +67,15 @@ CAMPOS = (
     "visibilidad",        # texto, p. ej. "10 km" o "16+ km"
     "cielo",              # texto en castellano
     "fenomenos",          # lluvia, niebla, etc., tal como lo informa la fuente
-    "crudo",              # observación original (METAR u otra)
+    # Precipitación (mm). Cada fuente informa períodos distintos; se guardan por separado
+    # y solo los que la fuente da explícitamente. Todos terminan en hora_utc salvo precip_mm.
+    "precip_hoy_mm",      # acumulada desde las 0 h (hora local) del día de la observación
+    "precip_1h_mm",       # última hora
+    "precip_24h_mm",      # últimas 24 horas
+    "precip_mm",          # otro período: precip_horas horas que terminan en precip_hasta_utc
+    "precip_horas",
+    "precip_hasta_utc",   # ISO 8601 en UTC
+    "crudo",               # observación original (METAR u otra)
     "enlace",             # página de la estación en el sitio de la fuente, si existe
 )
 
@@ -192,7 +200,10 @@ _RANGOS = {
     "temp_c": (-45, 47), "rocio_c": (-60, 35), "sensacion_c": (-60, 60),
     "humedad_pct": (1, 100), "viento_kmh": (0, 250), "rafaga_kmh": (0, 300),
     "viento_dir_grados": (0, 360), "presion_hpa": (450, 1090), "altura_m": (-50, 7000),
+    "precip_hoy_mm": (0, 500), "precip_1h_mm": (0, 200), "precip_24h_mm": (0, 600),
+    "precip_mm": (0, 600), "precip_horas": (1, 24),
 }
+_PRECIPITACION = ("precip_hoy_mm", "precip_1h_mm", "precip_24h_mm", "precip_mm")
 
 
 def limpiar(est):
@@ -212,6 +223,11 @@ def limpiar(est):
         est["viento_kmh"] = round(est["viento_kmh"])
     if est["rafaga_kmh"] is not None:
         est["rafaga_kmh"] = round(est["rafaga_kmh"])
+    for campo in _PRECIPITACION:
+        if est[campo] is not None:
+            est[campo] = round(est[campo], 1)
+    if est["precip_mm"] is None or est["precip_horas"] is None:
+        est["precip_mm"] = est["precip_horas"] = est["precip_hasta_utc"] = None
     return est
 
 
@@ -258,6 +274,10 @@ def nudos_a_kmh(v):
 
 def ms_a_kmh(v):
     return None if v is None else round(v * 3.6, 1)
+
+
+def pulgadas_a_mm(v):
+    return None if v is None else round(v * 25.4, 1)
 
 
 def presion_mar(hpa):

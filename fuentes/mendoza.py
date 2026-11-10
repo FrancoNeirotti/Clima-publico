@@ -31,5 +31,7 @@ def obtener():
             rocio_c=numero(e.get("puntoRocio")),
             viento_dir_grados=numero(e.get("direccionViento")),
             viento_kmh=ms_a_kmh(numero(e.get("velocidadViento"))),
+            # No está documentado; crece a lo largo de la mañana y no baja: acumulada del día.
+            precip_hoy_mm=numero(e.get("precipitacion")),
         ))
     return salida

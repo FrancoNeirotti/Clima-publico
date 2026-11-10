@@ -48,7 +48,10 @@ def obtener():
             hora_utc=_hora(e.get("ultimoRegistro")),
             temp_c=numero(e.get("temperaturaActual")),
             humedad_pct=numero(e.get("humedad")),
+            # El SIGA la suma como la lluvia del día de ultimoRegistro.
+            precip_hoy_mm=numero(e.get("precipitacion")),
             crudo=(f"Mín. {e.get('temperaturaMinima')} °C, máx. {e.get('temperaturaMaxima')} °C, "
-                   f"lluvia {e.get('precipitacion')} mm"),
+                   f"lluvia {e.get('precipitacion')} mm, "
+                   f"lluvia de los últimos 4 días {e.get('precipitacionAcumulada4dias')} mm"),
         ))
     return salida

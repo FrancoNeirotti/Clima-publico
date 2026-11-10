@@ -69,11 +69,42 @@ def _ultima_lectura(id_estacion):
     if "Bar" not in nombres:
         return None
     col_presion = nombres.index("Bar")
-    for linea in reversed(cola):
-        c = linea.split()
-        if len(c) > col_presion and re.fullmatch(r"\d{1,2}/\d{2}/\d{2}", c[0]):
-            return c, col_presion
-    return None
+    filas = _filas(cola, col_presion)
+    if not filas:
+        return None
+    ultima = filas[-1]
+    # La lluvia de cada fila es la del intervalo (última columna, en minutos): para la del
+    # día se suman las filas desde las 0 h, que se piden aparte (unos 280 bytes por fila).
+    intervalo = numero(ultima[-1])
+    minutos = _minutos(ultima[1])
+    lluvia = None
+    if intervalo and intervalo > 0 and minutos is not None:
+        bytes_dia = int(minutos / intervalo + 3) * 300
+        if bytes_dia > 800:
+            cola = descargar(url, cabeceras={"Range": f"bytes=-{bytes_dia}"}).decode("latin-1").splitlines()
+            filas = _filas(cola, col_presion)
+        # La fila de las 0:00 es el intervalo que termina a medianoche: cuenta para el día anterior.
+        del_dia = [c for c in filas if c[0] == ultima[0] and _minutos(c[1])]
+        valores = [numero(c[col_presion + 1]) for c in del_dia]
+        primera = _minutos(del_dia[0][1]) if del_dia else None
+        # Solo si se llegó hasta la primera fila del día y todas tienen dato.
+        if valores and None not in valores and primera is not None and primera <= intervalo:
+            lluvia = sum(valores)
+    return ultima, col_presion, lluvia
+
+
+def _minutos(hora):
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})([ap])?", hora)
+    if not m:
+        return None
+    h = int(m[1]) % 12 + (12 if m[3] == "p" else 0) if m[3] else int(m[1])
+    return h * 60 + int(m[2])
+
+
+def _filas(lineas, col_presion):
+    # La primera línea puede venir cortada por el Range.
+    return [c for c in (linea.split() for linea in lineas[1:])
+            if len(c) > col_presion + 1 and re.fullmatch(r"\d{1,2}/\d{2}/\d{2}", c[0])]
 
 
 def obtener():
@@ -83,7 +114,7 @@ def obtener():
     for id_estacion, lectura in zip(ids, en_paralelo(_ultima_lectura, ids, hilos=5)):
         if lectura is None:
             continue
-        c, col_presion = lectura
+        c, col_presion, lluvia = lectura
         temp, rocio = numero(c[TEMP]), numero(c[ROCIO])
         viento, rafaga = numero(c[VIENTO]), numero(c[RAFAGA])
         presion = numero(c[col_presion])
@@ -92,6 +123,7 @@ def obtener():
             viento = None if viento is None else viento * 1.609
             rafaga = None if rafaga is None else rafaga * 1.609
             presion *= 33.8639
+            lluvia = None if lluvia is None else lluvia * 25.4
         elif presion is not None and 600 < presion < 800:  # mmHg
             presion *= 1.33322
         lat, lon = ubicaciones[id_estacion]
@@ -109,6 +141,7 @@ def obtener():
             viento_dir_grados=rumbo_a_grados(c[DIRECCION]),
             rafaga_kmh=rafaga,
             presion_hpa=None if presion is None else round(presion, 1),
+            precip_hoy_mm=lluvia,
             crudo=" ".join(c[:col_presion + 2]),
         ))
     return salida

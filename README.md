@@ -44,6 +44,32 @@ estaciones en el país).
 Cuando dos estaciones de fuentes distintas están a menos de 2 km, se muestra
 una sola: la de la fuente que figura primero en la tabla.
 
+### Lluvia
+
+Cada fuente informa la lluvia acumulada en períodos distintos, así que se guarda
+en campos separados y el detalle de la estación muestra cada uno con su período
+(si la fuente no la informa, no aparece):
+
+- `precip_hoy_mm`: desde las 0 h (hora local) del día de la observación.
+- `precip_1h_mm` y `precip_24h_mm`: última hora y últimas 24 horas.
+- `precip_mm`, `precip_horas` y `precip_hasta_utc`: otro período, de `precip_horas`
+  horas que terminan en `precip_hasta_utc` (los partes SYNOP).
+
+| Fuente | Lluvia |
+|---|---|
+| Aeropuertos (METAR), SMN tiempo presente | No la informan |
+| SMN, partes SYNOP | Grupo 6RRRt: 6 h hasta las 00 y 06 UTC y 24 h hasta las 12 UTC; se toma la del último parte que la trae |
+| Mendoza (DACC) | Del día (no está documentado; se deduce porque solo crece durante el día) |
+| San Luis (REM) | Última hora y últimas 24 h |
+| Tucumán (EEAOC), Bahía Blanca (BCP), INTA | Del día |
+| Entre Ríos (Hidráulica) | Del día, sumando los intervalos del archivo de WeatherLink desde las 0 h |
+| SNIH, INA | No por ahora (períodos poco claros o series aparte) |
+| WeatherLink, Ambient Weather, AWEKAS, Weathercloud | Del día (Ambient también de 24 h cuando la estación la manda) |
+| CWOP | Última hora, últimas 24 h y desde medianoche |
+| Sensor.Community | No mide lluvia |
+
+No se guardan los acumulados de varios días, mes o año ni la intensidad (mm/h).
+
 Se revisaron y **no** se incluyen (por ahora): la red de Córdoba y la de la
 Bolsa de Cereales de Entre Ríos (publican las lecturas solo como imagen), la
 AIC y la red GEA de la Bolsa de Comercio de Rosario (solo datos diarios).

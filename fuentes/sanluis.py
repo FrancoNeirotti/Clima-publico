@@ -47,5 +47,7 @@ def obtener():
             viento_kmh=primer_numero(d.get("lblVelocidadViento")),
             viento_dir_grados=primer_numero(direccion.split("/")[-1]) if "/" in direccion else None,
             presion_hpa=primer_numero(d.get("lblPresion")),
+            precip_1h_mm=primer_numero(d.get("lblPrecipitacion")),  # "Última hora"
+            precip_24h_mm=primer_numero(d.get("lblPrecipitacion24h")),
         ))
     return salida

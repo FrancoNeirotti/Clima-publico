@@ -7,7 +7,7 @@ estación (más de mil), por eso esta fuente se actualiza cada hora. Es un
 servicio no documentado: no conviene bajar ese intervalo.
 """
 from .comun import (cacheado, descargar_json, en_argentina, en_paralelo, estacion, ms_a_iso,
-                    numero, presion_mar)
+                    numero, presion_mar, pulgadas_a_mm)
 
 ID = "weatherlink"
 NOMBRE = "WeatherLink (Davis)"
@@ -55,6 +55,9 @@ def obtener():
         barometro = numero(d.get("barometer"))
         unidad_temp = (d.get("temperatureUnit") or "").upper()
         temp = numero(d.get("temperature"))
+        lluvia = numero(d.get("dailyRain"))
+        if lluvia is not None and (d.get("rainUnit") or "").strip().lower() == "in":
+            lluvia = pulgadas_a_mm(lluvia)
         salida.append(estacion(
             id=f"weatherlink:{id_estacion}",
             nombre=f"{_texto(d.get('sStation') or id_estacion)} (WeatherLink)",
@@ -68,5 +71,6 @@ def obtener():
             viento_dir_grados=numero(d.get("windDirection")) if viento else None,
             presion_hpa=None if barometro is None else presion_mar(round(
                 barometro * 33.8639 if "in" in (d.get("barometerUnit") or "") else barometro, 1)),
+            precip_hoy_mm=lluvia,  # dailyRain: la consola Davis la reinicia a medianoche
         ))
     return salida

@@ -17,7 +17,9 @@ MINUTOS = 30
 
 URL = "https://www.ogimet.com/cgi-bin/getsynop?block={bloque}&begin={desde}"
 BLOQUES = ("87", "88", "89")
-HORAS_ATRAS = 4
+HORAS_ATRAS = 13  # alcanza para el último parte con lluvia (6RRRt va a las 00, 06 y 12 UTC)
+# tR del grupo 6RRRt: horas que abarca la lluvia informada, hasta la hora del parte.
+PERIODO_LLUVIA = {"1": 6, "2": 12, "3": 18, "4": 24, "5": 1, "6": 2, "7": 3, "8": 9, "9": 15}
 
 CIELO = {0: "Despejado", 1: "Algunas nubes", 2: "Algunas nubes", 3: "Parcialmente nublado",
          4: "Parcialmente nublado", 5: "Mayormente nublado", 6: "Mayormente nublado",
@@ -110,6 +112,10 @@ def decodificar(texto):
                 r["presion_hpa"] = _presion(g[1:])
             elif g[0] == "3" and "presion_hpa" not in r:
                 r["presion_estacion"] = _presion(g[1:])
+            elif g[0] == "6" and g[1:].isdigit() and g[4] in PERIODO_LLUVIA:
+                rrr = int(g[1:4])
+                r["precip_mm"] = 0 if rrr == 990 else (rrr - 990) / 10 if rrr > 990 else rrr
+                r["precip_horas"] = PERIODO_LLUVIA[g[4]]
             elif g[0] == "7" and g[1:3].isdigit():
                 r["fenomenos"] = _fenomeno(int(g[1:3]))
         elif seccion == 333 and g[:3] in ("910", "911") and g[3:].isdigit():
@@ -125,7 +131,7 @@ def decodificar(texto):
 def obtener():
     listado = {e["nro"]: e for e in smn.listado_estaciones()}
     desde = (datetime.now(timezone.utc) - timedelta(hours=HORAS_ATRAS)).strftime("%Y%m%d%H00")
-    ultimos = {}
+    partes_por_estacion = {}
     for bloque in BLOQUES:
         texto = descargar(URL.format(bloque=bloque, desde=desde), timeout=60).decode("latin-1")
         for linea in texto.splitlines():
@@ -133,14 +139,24 @@ def obtener():
             if len(partes) < 7 or partes[0] not in listado:
                 continue
             hora = datetime(*map(int, partes[1:6]), tzinfo=timezone.utc)
-            if partes[0] not in ultimos or hora > ultimos[partes[0]][0]:
-                ultimos[partes[0]] = (hora, partes[6].strip())
+            partes_por_estacion.setdefault(partes[0], []).append((hora, partes[6].strip()))
 
     salida = []
-    for nro, (hora, parte) in ultimos.items():
+    for nro, lista in partes_por_estacion.items():
+        lista.sort()
+        hora, parte = lista[-1]
         datos = decodificar(parte)
         if not datos or datos.get("temp_c") is None:
             continue
+        datos.pop("precip_mm", None)
+        datos.pop("precip_horas", None)
+        # La lluvia no va en todos los partes: se toma la del último que la trae.
+        for hora_lluvia, parte_lluvia in reversed(lista):
+            lluvia = decodificar(parte_lluvia) or {}
+            if lluvia.get("precip_mm") is not None:
+                datos.update(precip_mm=lluvia["precip_mm"], precip_horas=lluvia["precip_horas"],
+                             precip_hasta_utc=hora_lluvia.isoformat())
+                break
         e = listado[nro]
         salida.append(estacion(
             id=f"synop:{nro}",

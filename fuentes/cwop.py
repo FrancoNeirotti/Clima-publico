@@ -49,8 +49,14 @@ def _hora(paquete):
         return None
 
 
+def _lluvia(paquete, letra):
+    """rRRR, pPPP y PPPP: centésimos de pulgada (última hora, 24 h y desde medianoche)."""
+    m = re.search(rf"(?<=[\d.]){letra}(\d{{3}})(?!\d)", paquete)
+    return None if not m else round(int(m[1]) * 0.254, 1)
+
+
 def decodificar(paquete):
-    """Paquete de tiempo APRS: posición, _ddd/sss (viento), gGGG, tTTT (°F), hHH, bBBBBB."""
+    """Paquete de tiempo APRS: posición, _ddd/sss (viento), gGGG, tTTT (°F), hHH, bBBBBB, rRRR..."""
     pos = _POSICION.search(paquete)
     viento = re.search(r"_(\d{3})/(\d{3})", paquete)
     temp_f = _campo(paquete, "t", 3)
@@ -68,6 +74,9 @@ def decodificar(paquete):
         "viento_kmh": round(int(viento[2]) * 1.609, 1) if viento else None,
         "viento_dir_grados": int(viento[1]) if viento and int(viento[2]) else None,
         "rafaga_kmh": None if rafaga is None else round(rafaga * 1.609, 1),
+        "precip_1h_mm": _lluvia(paquete, "r"),
+        "precip_24h_mm": _lluvia(paquete, "p"),
+        "precip_hoy_mm": _lluvia(paquete, "P"),
     }
 
 

@@ -662,6 +662,32 @@ function fila(nombre, valor) {
   return valor == null || valor === "" ? [] : [el("dt", {}, nombre), el("dd", {}, valor)];
 }
 
+const mm = v => `${fmt.format(v)} mm`;
+const fmtDia = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "numeric", month: "numeric" });
+
+// Cada fuente informa la lluvia de períodos distintos: se muestra cada uno con su período.
+function filasLluvia(e) {
+  let hoy = "Lluvia del día";
+  if (e.hora_utc && fmtDia.format(new Date(e.hora_utc)) === fmtDia.format(new Date())) {
+    hoy = "Lluvia hoy (desde las 0 h)";
+  } else if (e.hora_utc) {
+    hoy = `Lluvia del ${fmtDia.format(new Date(e.hora_utc))} (hasta las ${fmtHora.format(new Date(e.hora_utc))})`;
+  }
+  let otro = null;
+  if (e.precip_mm != null) {
+    const fin = e.precip_hasta_utc ? new Date(e.precip_hasta_utc) : null;
+    const hasta = !fin ? "" : fmtDia.format(fin) === fmtDia.format(new Date())
+      ? ` hasta las ${fmtHora.format(fin)}` : ` hasta el ${fmtFecha.format(fin)}`;
+    otro = `Lluvia en ${e.precip_horas === 1 ? "1 hora" : `${e.precip_horas} horas`}${hasta}`;
+  }
+  return [
+    ...fila(hoy, e.precip_hoy_mm == null ? null : mm(e.precip_hoy_mm)),
+    ...fila("Lluvia última hora", e.precip_1h_mm == null ? null : mm(e.precip_1h_mm)),
+    ...fila("Lluvia últimas 24 h", e.precip_24h_mm == null ? null : mm(e.precip_24h_mm)),
+    ...(otro ? fila(otro, mm(e.precip_mm)) : []),
+  ];
+}
+
 function textoViento(e) {
   if (e.viento_kmh == null) return null;
   if (e.viento_kmh === 0) return "Calma";
@@ -692,6 +718,7 @@ function dibujarDetalle(e) {
       ...fila("Punto de rocío", e.rocio_c == null ? null : `${fmt.format(e.rocio_c)} °C`),
       ...fila("Humedad", e.humedad_pct == null ? null : `${fmt.format(e.humedad_pct)} %`),
       ...fila("Presión", e.presion_hpa == null ? null : `${fmt.format(e.presion_hpa)} hPa`),
+      ...filasLluvia(e),
       ...fila("Visibilidad", e.visibilidad),
       ...fila("Fenómenos", e.fenomenos),
       ...fila("Altura", e.altura_m == null ? null : `${fmt.format(e.altura_m)} m`),

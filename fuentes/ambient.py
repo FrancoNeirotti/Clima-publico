@@ -6,7 +6,7 @@ donde se llega a ese tope, el rectángulo se divide en cuatro.
 """
 from urllib.parse import urlencode
 
-from .comun import descargar_json, en_argentina, estacion, ms_a_iso, numero, presion_mar
+from .comun import descargar_json, en_argentina, estacion, ms_a_iso, numero, presion_mar, pulgadas_a_mm
 
 ID = "ambient"
 NOMBRE = "Ambient Weather"
@@ -77,5 +77,8 @@ def obtener():
             viento_dir_grados=numero(ultimo.get("winddir")) if viento else None,
             rafaga_kmh=_mph(numero(ultimo.get("windgustmph"))) or None,
             presion_hpa=None if presion is None else presion_mar(round(presion * 33.8639, 1)),
+            # hourlyrainin es intensidad (pulgadas/hora), no acumulado: no se usa.
+            precip_hoy_mm=pulgadas_a_mm(numero(ultimo.get("dailyrainin"))),
+            precip_24h_mm=pulgadas_a_mm(numero(ultimo.get("24hourrainin"))),
         ))
     return salida
