@@ -16,7 +16,7 @@ MINUTOS = 10
 URL = "https://info.bcp.org.ar/Estaciones/MapaG_NvoBCP.asp"
 # Índices de jsDatos[estación][sensor][0], según las constantes de la página.
 LAT, LON, TEMP, HUMEDAD, ROCIO, PRESION, DIRECCION, VIENTO, RAFAGA, ACTUALIZADA = 0, 1, 5, 14, 15, 16, 18, 19, 20, 25
-LLUVIA_DIA = 10  # "Precipitaciones del día" (11, 12 y 13 son 7 días, mes y año)
+LLUVIA_DIA, LLUVIA_7D, LLUVIA_MES, LLUVIA_ANIO = 10, 11, 12, 13
 
 _TITULO = re.compile(r"titleEstacion\[(\d+)\]\s*=\s*'([^']*)'")
 _HABILITADA = re.compile(r"habilEstacion\[(\d+)\]\s*=\s*(\d+)")
@@ -60,5 +60,8 @@ def obtener():
             viento_kmh=_valor(d, VIENTO),
             rafaga_kmh=_valor(d, RAFAGA),
             precip_hoy_mm=_valor(d, LLUVIA_DIA),
+            precip_7d_mm=_valor(d, LLUVIA_7D),
+            precip_mes_mm=_valor(d, LLUVIA_MES),
+            precip_anio_mm=_valor(d, LLUVIA_ANIO),
         ))
     return salida

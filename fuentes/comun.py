@@ -75,7 +75,16 @@ CAMPOS = (
     "precip_mm",          # otro período: precip_horas horas que terminan en precip_hasta_utc
     "precip_horas",
     "precip_hasta_utc",   # ISO 8601 en UTC
-    "crudo",               # observación original (METAR u otra)
+    "precip_7d_mm",       # últimos 7 días
+    "precip_semana_mm",   # semana calendario (la consola la reinicia el domingo)
+    "precip_30d_mm",      # últimos 30 días
+    "precip_mes_mm",      # mes calendario en curso
+    "precip_anio_mm",     # año calendario en curso
+    "precip_evento_mm",   # tormenta en curso o última (la consola la reinicia tras horas sin lluvia)
+    "precip_intensidad_mmh",  # intensidad actual, mm/h
+    "precip_ultima_utc",  # cuándo llovió por última vez, ISO 8601 en UTC
+    "precip_fuente",      # si la lluvia viene de otra fuente de la misma estación (p. ej. "synop")
+    "crudo",                # observación original (METAR u otra)
     "enlace",             # página de la estación en el sitio de la fuente, si existe
 )
 
@@ -202,8 +211,13 @@ _RANGOS = {
     "viento_dir_grados": (0, 360), "presion_hpa": (450, 1090), "altura_m": (-50, 7000),
     "precip_hoy_mm": (0, 500), "precip_1h_mm": (0, 200), "precip_24h_mm": (0, 600),
     "precip_mm": (0, 600), "precip_horas": (1, 24),
+    "precip_7d_mm": (0, 1500), "precip_semana_mm": (0, 1500), "precip_30d_mm": (0, 3000),
+    "precip_mes_mm": (0, 3000), "precip_anio_mm": (0, 10000), "precip_evento_mm": (0, 2000),
+    "precip_intensidad_mmh": (0, 500),
 }
-_PRECIPITACION = ("precip_hoy_mm", "precip_1h_mm", "precip_24h_mm", "precip_mm")
+_PRECIPITACION = ("precip_hoy_mm", "precip_1h_mm", "precip_24h_mm", "precip_mm", "precip_7d_mm",
+                  "precip_semana_mm", "precip_30d_mm", "precip_mes_mm", "precip_anio_mm",
+                  "precip_evento_mm", "precip_intensidad_mmh")
 
 
 def limpiar(est):

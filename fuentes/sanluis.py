@@ -49,5 +49,7 @@ def obtener():
             presion_hpa=primer_numero(d.get("lblPresion")),
             precip_1h_mm=primer_numero(d.get("lblPrecipitacion")),  # "Última hora"
             precip_24h_mm=primer_numero(d.get("lblPrecipitacion24h")),
+            precip_30d_mm=primer_numero(d.get("lblPrecipitacion30d")),
+            precip_anio_mm=primer_numero(d.get("lblPrecipitacionAnio")),
         ))
     return salida

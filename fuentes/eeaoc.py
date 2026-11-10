@@ -43,5 +43,6 @@ def obtener():
             viento_dir_grados=rumbo_a_grados(rumbos.get(ident)) if viento else None,
             rafaga_kmh=numero(e.get("viento_max")) or None,
             precip_hoy_mm=numero(e.get("rr_dia")),
+            precip_mes_mm=numero(e.get("rr_mes")),
         ))
     return salida

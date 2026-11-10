@@ -23,6 +23,7 @@ CABECERAS = {"Content-Type": "application/json; charset=utf-8", "Referer": BASE 
 RED_INTA = 11  # figura en el listado pero no devuelve datos; el INTA ya tiene su fuente
 HORAS_REVISION_COMPLETA = 6
 CODIGOS = {14: "temp_c", 18: "humedad_pct", 4: "viento_kmh", 5: "viento_dir_grados", 218: "presion_hpa"}
+LLUVIA = 20  # "Precipitación": lo que llovió en el intervalo de cada registro (1 o 4 h según la red)
 CAMPOS_LISTADO = ("Codigo", "Descripcion", "Red", "Latitud", "Longitud", "Cota")
 
 
@@ -48,17 +49,53 @@ def _descargar_listado():
 
 def _actuales(e):
     resp = _post("MuestraDatos.aspx/LeerDatosActuales", {"estacion": str(e["Codigo"])})
-    valores, horas = {}, []
+    valores, horas, lluvia = {}, [], None
     for m in resp.get("Mediciones") or []:
-        campo, valor = CODIGOS.get(m.get("Codigo")), numero(m.get("Valor"))
-        ms = _ms(m.get("FechaHora"))
-        if campo is None or valor is None or valor <= -999 or ms is None or ms <= 0:
+        valor, ms = numero(m.get("Valor")), _ms(m.get("FechaHora"))
+        if valor is None or valor <= -999 or ms is None or ms <= 0:
+            continue
+        if m.get("Codigo") == LLUVIA:
+            lluvia = (valor, ms)
+        campo = CODIGOS.get(m.get("Codigo"))
+        if campo is None:
             continue
         valores[campo] = valor
         horas.append(ms)
     if "temp_c" not in valores:
         return None
-    return valores, max(horas)
+    return valores, max(horas), lluvia
+
+
+def _lluvia_24h(codigo):
+    """(mm, fin en ms, intervalo en minutos) sumando los registros de las últimas 24 h hasta
+    el último; None si faltan registros."""
+    hoy = time.time() - 3 * 3600
+    dia = lambda dias: time.strftime("%Y-%m-%d", time.gmtime(hoy + dias * 86400))
+    resp = _post("MuestraDatos.aspx/LeerUltimosRegistros",
+                 {"fechaDesde": dia(-1), "fechaHasta": dia(1), "estacion": str(codigo), "codigo": str(LLUVIA)})
+    registros = {}
+    for r in resp.get("Mediciones") or []:
+        ms = _ms(r.get("FechaHora"))
+        for m in r.get("Mediciones") or []:
+            valor = numero(m.get("Valor"))
+            if m.get("Codigo") == LLUVIA and ms and valor is not None and valor > -999:
+                registros[ms] = valor
+    momentos = sorted(registros)
+    if len(momentos) < 3:
+        return None
+    pasos = sorted(b - a for a, b in zip(momentos, momentos[1:]))
+    intervalo = pasos[len(pasos) // 2]
+    fin = momentos[-1]
+    del_periodo = [t for t in momentos if t > fin - 86400000]
+    # Cada registro es la lluvia del intervalo que termina en su hora: hacen falta todos.
+    if not intervalo or len(del_periodo) < 86400000 // intervalo:
+        return None
+    return round(sum(registros[t] for t in del_periodo), 1), fin, intervalo // 60000
+
+
+def _lluvias(codigos):
+    return cacheado("snih_lluvia", 1, lambda: {
+        str(c): r for c, r in zip(codigos, en_paralelo(_lluvia_24h, codigos, hilos=8)) if r})
 
 
 def obtener():
@@ -68,13 +105,26 @@ def obtener():
     activas_previas = set() if completa else set(revision["codigos"])
     a_consultar = [e for e in listado["estaciones"] if completa or e["Codigo"] in activas_previas]
     resultados = en_paralelo(_actuales, a_consultar, hilos=8)
+    con_lluvia = [e["Codigo"] for e, r in zip(a_consultar, resultados) if r and r[2]]
+    try:
+        lluvias = _lluvias(con_lluvia)
+    except Exception:
+        lluvias = {}
 
     salida, activas = [], set()
     for e, r in zip(a_consultar, resultados):
         if r is None:
             continue
-        valores, ms = r
+        valores, ms, actual = r
         activas.add(e["Codigo"])
+        lluvia = {}
+        historia = lluvias.get(str(e["Codigo"]))
+        if historia:
+            mm, fin, intervalo = historia
+            lluvia = {"precip_mm": mm, "precip_horas": 24, "precip_hasta_utc": ms_a_iso(fin)}
+            # El registro horario es la lluvia de la última hora (si es el último disponible).
+            if intervalo == 60 and actual and actual[1] >= fin and abs(actual[1] - ms) <= 3600000:
+                lluvia["precip_1h_mm"] = actual[0]
         lat, lon = -abs(e["Latitud"]), -abs(e["Longitud"])  # el SNIH las guarda en positivo
         red = listado["redes"].get(str(e.get("Red")))
         nombre = (e.get("Descripcion") or str(e["Codigo"])).strip()
@@ -86,6 +136,7 @@ def obtener():
             altura_m=numero(e.get("Cota")) or None,
             hora_utc=ms_a_iso(ms),
             **valores,
+            **lluvia,
         ))
     if completa:
         guardar_json("snih_activas", {"momento": time.time(), "codigos": sorted(activas)})

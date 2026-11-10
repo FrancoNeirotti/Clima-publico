@@ -16,6 +16,7 @@ SITIO = "https://www.hidraulica.gob.ar/ema.php"
 MINUTOS = 10
 
 URL_ARCHIVO = "https://www.hidraulica.gob.ar/ema/ema-{id}/downld08.txt"
+URL_ANUAL = "https://www.hidraulica.gob.ar/ema/ema-{id}/NOAAYR.TXT"  # resumen NOAA del año
 URL_FICHA = "https://www.hidraulica.gob.ar/ema.php?station={id}&inf=datos"
 ESTACIONES = {
     "basavilbaso": "Basavilbaso", "bovril": "Bovril", "ceibas": "Ceibas",
@@ -107,6 +108,44 @@ def _filas(lineas, col_presion):
             if len(c) > col_presion + 1 and re.fullmatch(r"\d{1,2}/\d{2}/\d{2}", c[0])]
 
 
+def lluvia_mensual(texto):
+    """Del resumen NOAA anual: {(año de 2 dígitos, mes): total en mm}. El mes en curso
+    incluye lo que va del día hasta que la consola subió el archivo."""
+    lineas = texto.splitlines()
+    inicio = next((i for i, l in enumerate(lineas) if "PRECIPITACION" in l.upper()), None)
+    if inicio is None:
+        return {}
+    factor = 25.4 if "(in)" in lineas[inicio] else 1
+    totales, en_tabla = {}, False
+    for linea in lineas[inicio + 1:]:
+        if linea.startswith("-"):
+            if en_tabla:
+                break
+            en_tabla = True
+            continue
+        m = re.match(r"\s*(\d{1,2})\s+(\d{1,2})\s+(\d+\.\d+)", linea)
+        if m:
+            totales[(int(m[1]), int(m[2]))] = round(float(m[3]) * factor, 1)
+    return totales
+
+
+def _lluvia_mensual(id_estacion):
+    return cacheado(f"hidraulica_er_noaa_{id_estacion}", 1, lambda: {
+        f"{a}-{m}": v for (a, m), v in
+        lluvia_mensual(descargar(URL_ANUAL.format(id=id_estacion)).decode("latin-1")).items()})
+
+
+def _mes_y_anio(id_estacion, fecha):
+    """Lluvia del mes y del año de la fecha 'dd/mm/aa' de la última lectura."""
+    try:
+        totales = _lluvia_mensual(id_estacion)
+    except Exception:
+        return None, None
+    _, mes, anio = (int(x) for x in fecha.split("/"))
+    del_anio = [v for k, v in totales.items() if int(k.split("-")[0]) == anio]
+    return totales.get(f"{anio}-{mes}"), (round(sum(del_anio), 1) if del_anio else None)
+
+
 def obtener():
     ubicaciones = _ubicaciones_estaciones()
     ids = [i for i in ESTACIONES if ubicaciones.get(i)]
@@ -118,14 +157,17 @@ def obtener():
         temp, rocio = numero(c[TEMP]), numero(c[ROCIO])
         viento, rafaga = numero(c[VIENTO]), numero(c[RAFAGA])
         presion = numero(c[col_presion])
+        intensidad = numero(c[col_presion + 2]) if len(c) > col_presion + 2 else None
         if presion is not None and presion < 40:  # consola en unidades inglesas (°F, mph, inHg)
             temp, rocio = _fahrenheit_a_c(temp), _fahrenheit_a_c(rocio)
             viento = None if viento is None else viento * 1.609
             rafaga = None if rafaga is None else rafaga * 1.609
             presion *= 33.8639
             lluvia = None if lluvia is None else lluvia * 25.4
+            intensidad = None if intensidad is None else intensidad * 25.4
         elif presion is not None and 600 < presion < 800:  # mmHg
             presion *= 1.33322
+        mes, anio = _mes_y_anio(id_estacion, c[0])
         lat, lon = ubicaciones[id_estacion]
         salida.append(estacion(
             id=f"hidraulica_er:{id_estacion}",
@@ -142,6 +184,9 @@ def obtener():
             rafaga_kmh=rafaga,
             presion_hpa=None if presion is None else round(presion, 1),
             precip_hoy_mm=lluvia,
-            crudo=" ".join(c[:col_presion + 2]),
+            precip_mes_mm=mes,
+            precip_anio_mm=anio,
+            precip_intensidad_mmh=intensidad,  # máxima del último intervalo
+            crudo=" ".join(c[:col_presion + 3]),
         ))
     return salida

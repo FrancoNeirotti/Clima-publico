@@ -77,8 +77,14 @@ def obtener():
             viento_dir_grados=numero(ultimo.get("winddir")) if viento else None,
             rafaga_kmh=_mph(numero(ultimo.get("windgustmph"))) or None,
             presion_hpa=None if presion is None else presion_mar(round(presion * 33.8639, 1)),
-            # hourlyrainin es intensidad (pulgadas/hora), no acumulado: no se usa.
+            # hourlyrainin es intensidad (pulgadas/hora), no acumulado.
             precip_hoy_mm=pulgadas_a_mm(numero(ultimo.get("dailyrainin"))),
             precip_24h_mm=pulgadas_a_mm(numero(ultimo.get("24hourrainin"))),
+            precip_intensidad_mmh=pulgadas_a_mm(numero(ultimo.get("hourlyrainin"))),
+            precip_evento_mm=pulgadas_a_mm(numero(ultimo.get("eventrainin"))),
+            precip_semana_mm=pulgadas_a_mm(numero(ultimo.get("weeklyrainin"))),
+            precip_mes_mm=pulgadas_a_mm(numero(ultimo.get("monthlyrainin"))),
+            precip_anio_mm=pulgadas_a_mm(numero(ultimo.get("yearlyrainin"))),
+            precip_ultima_utc=ms_a_iso(ultimo.get("lastRain")) if isinstance(ultimo.get("lastRain"), (int, float)) else None,
         ))
     return salida

@@ -51,6 +51,45 @@ def _listado_series():
     return dict(cacheado("ina_series", 24, _descargar_series))
 
 
+# Lluvia diaria "12Z": total de las 24 h que terminan a las 9 (hora argentina). La serie
+# de intervalo nativo (var 27) llega con horas de atraso y sin período claro: no se usa.
+VAR_LLUVIA_DIARIA = 1
+
+
+def _descargar_series_lluvia():
+    datos = descargar_json(f"{BASE}series?format=json&var_id={VAR_LLUVIA_DIARIA}", timeout=120)
+    hace_una_semana = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    return [[s["id"], (s.get("estacion") or {}).get("id")] for s in datos.get("rows", [])
+            if ((s.get("date_range") or {}).get("timeend") or "") >= hace_una_semana
+            and (s.get("unidades") or {}).get("abrev") in ("mm", "mm/d")]
+
+
+def _lluvia_diaria(ahora):
+    """{id de estación: (mm, fin del período ISO)} con el último total diario de cada una."""
+    series = dict(cacheado("ina_series_lluvia", 24, _descargar_series_lluvia))
+    ids = list(series)
+    desde = (ahora - timedelta(hours=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    hasta = (ahora + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    url = f"{BASE}observaciones?tipo=puntual&series_id={{}}&timestart={desde}&timeend={hasta}"
+    lotes = [",".join(str(x) for x in ids[i:i + SERIES_POR_PEDIDO])
+             for i in range(0, len(ids), SERIES_POR_PEDIDO)]
+    ultimas = {}
+    for r in en_paralelo(lambda lote: descargar_json(url.format(lote), timeout=120), lotes, hilos=2):
+        for o in r or []:
+            previa = ultimas.get(o["series_id"])
+            if previa is None or o["timeend"] > previa["timeend"]:
+                ultimas[o["series_id"]] = o
+    lluvia = {}
+    for sid, o in ultimas.items():
+        valor, est = numero(o.get("valor")), series.get(sid)
+        inicio = datetime.fromisoformat(o["timestart"].replace("Z", "+00:00"))
+        fin = datetime.fromisoformat(o["timeend"].replace("Z", "+00:00"))
+        if valor is None or est is None or fin - inicio != timedelta(hours=24) or ahora - fin > timedelta(hours=36):
+            continue
+        lluvia[est] = (valor, fin.isoformat())
+    return lluvia
+
+
 def obtener():
     series = _listado_series()
     ahora = datetime.now(timezone.utc)
@@ -83,10 +122,17 @@ def obtener():
             datos["hora"] = o["timestart"]
 
     salida = []
+    try:
+        lluvia = _lluvia_diaria(ahora)
+    except Exception:
+        lluvia = {}
     for datos in por_estacion.values():
         est, v = datos["est"], datos["valores"]
         if "temp_c" not in v:
             continue
+        if est["id"] in lluvia:
+            mm, fin = lluvia[est["id"]]
+            v = {**v, "precip_mm": mm, "precip_horas": 24, "precip_hasta_utc": fin}
         lon, lat = est["geom"]["coordinates"][:2]
         red = (est.get("red") or {}).get("nombre") or est.get("tabla")
         salida.append(estacion(

@@ -163,6 +163,12 @@
   dl.datos { margin: 0; display: grid; grid-template-columns: 1fr auto; }
   dl.datos dt, dl.datos dd { padding: 9px 0; border-top: 1px solid var(--linea); margin: 0; }
   dl.datos dd { font-family: var(--numeros); font-weight: 600; font-size: 1.05rem; text-align: right; }
+  .lluvia { margin-top: 14px; }
+  .lluvia h3 { margin: 0 0 4px; font-size: .78rem; font-weight: 600; text-transform: uppercase;
+               letter-spacing: .04em; color: #2f6fb8; }
+  .lluvia h3 span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--tinta-suave); }
+  .lluvia dl.datos { border-left: 3px solid color-mix(in srgb, #2f6fb8 45%, transparent); padding-left: 10px; }
+  dl.datos.otros { margin-top: 14px; }
   .crudo {
     margin-top: 14px; padding: 10px; border-radius: 8px;
     background: color-mix(in srgb, var(--tinta) 6%, transparent);
@@ -195,6 +201,14 @@
                     letter-spacing: .04em; color: var(--tinta-suave); }
   .pin.elegido { outline: 3px solid var(--tinta); outline-offset: 1px; z-index: 1; }
   .pin.sin-dato { background: #b9c3c9; }
+  .pin.oscuro { color: #fff; }
+  .capa-lluvia a { display: grid; place-items: center; }
+  /* En la computadora va debajo del botón "cerca mío". */
+  @media (min-width: 701px) { .leaflet-top .capa-lluvia { margin-top: 54px; } }
+  @media (min-width: 701px) and (pointer: coarse) { .leaflet-top .capa-lluvia { margin-top: 70px; } }
+  .capa-lluvia svg { width: 18px; height: 18px; fill: none; stroke: #2f6fb8; stroke-width: 2; }
+  .capa-lluvia.activo a { background: #2f6fb8; }
+  .capa-lluvia.activo svg { fill: #fff; stroke: #fff; }
   /* Con el dedo, los marcadores se pueden tocar aunque sean chicos. */
   @media (pointer: coarse) {
     .pin::after { content: ""; position: absolute; inset: -9px -5px; }
@@ -306,7 +320,7 @@
   <div class="cuerpo" id="cuerpo"></div>
   <div class="escala" aria-hidden="true">
     <div class="barra" id="barra"></div>
-    <div class="marcas"><span>−10°</span><span>0°</span><span>10°</span><span>20°</span><span>30°</span><span>40°</span></div>
+    <div class="marcas" id="marcas"></div>
   </div>
 </aside>
 
@@ -329,21 +343,36 @@ const fmtFecha = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "numeri
 // Escala de temperatura (°C → color)
 const ESCALA = [[-10, [74, 92, 196]], [0, [96, 150, 220]], [10, [118, 200, 205]],
                 [18, [150, 212, 120]], [25, [242, 196, 78]], [32, [236, 122, 58]], [40, [190, 52, 60]]];
-function colorTemp(t) {
+function colorEscala(escala, t) {
   if (t == null) return null;
-  if (t <= ESCALA[0][0]) return `rgb(${ESCALA[0][1]})`;
-  for (let i = 1; i < ESCALA.length; i++) {
-    const [t1, c1] = ESCALA[i];
+  if (t <= escala[0][0]) return `rgb(${escala[0][1]})`;
+  for (let i = 1; i < escala.length; i++) {
+    const [t1, c1] = escala[i];
     if (t <= t1) {
-      const [t0, c0] = ESCALA[i - 1];
+      const [t0, c0] = escala[i - 1];
       const k = (t - t0) / (t1 - t0);
       return `rgb(${c0.map((v, j) => Math.round(v + (c1[j] - v) * k))})`;
     }
   }
-  return `rgb(${ESCALA[ESCALA.length - 1][1]})`;
+  return `rgb(${escala[escala.length - 1][1]})`;
 }
-document.getElementById("barra").style.background =
-  `linear-gradient(to right, ${ESCALA.map(([t]) => `${colorTemp(t)} ${((t + 10) / 50) * 100}%`).join(", ")})`;
+const colorTemp = t => colorEscala(ESCALA, t);
+// Escala de lluvia (mm en el día → color)
+const ESCALA_LLUVIA = [[0, [226, 232, 236]], [1, [178, 216, 240]], [5, [110, 170, 230]],
+                       [10, [56, 118, 210]], [25, [64, 62, 178]], [50, [150, 50, 170]]];
+const colorLluvia = v => colorEscala(ESCALA_LLUVIA, v);
+function dibujarEscala() {
+  const lluvia = estado.modo === "lluvia";
+  const escala = lluvia ? ESCALA_LLUVIA : ESCALA;
+  const color = lluvia ? colorLluvia : colorTemp;
+  // La de lluvia no es lineal: sus marcas van equiespaciadas.
+  const pos = (t, i) => lluvia ? (i / (escala.length - 1)) * 100 : ((t + 10) / 50) * 100;
+  document.getElementById("barra").style.background =
+    `linear-gradient(to right, ${escala.map(([t], i) => `${color(t)} ${pos(t, i)}%`).join(", ")})`;
+  document.getElementById("marcas").replaceChildren(...(lluvia
+    ? escala.map(([t]) => el("span", {}, `${t}${t === 50 ? "+ mm" : ""}`))
+    : [-10, 0, 10, 20, 30, 40].map(t => el("span", {}, `${t < 0 ? "−" + -t : t}°`))));
+}
 
 const RUMBOS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
 const rumbo = g => RUMBOS[Math.round(g / 22.5) % 16];
@@ -393,7 +422,45 @@ const marcadores = new Map(); // id -> { marcador, html, z }
 
 const estado = { datos: null, etag: null, ocultas: new Set(), filtro: "", elegida: null,
                  porId: new Map(), prioridad: new Map(), tipo: new Map(), fuentes: new Map(),
-                 enVista: null, listaCompleta: false, ubicacion: null };
+                 enVista: null, listaCompleta: false, ubicacion: null,
+                 modo: localStorage.getItem("modo-mapa") === "lluvia" ? "lluvia" : "temp" };
+dibujarEscala();
+
+// Lluvia del día en curso: solo si la observación es de hoy (hora argentina).
+function lluviaHoy(e) {
+  if (e.precip_hoy_mm == null || !e.hora_utc) return null;
+  return fmtDia.format(new Date(e.hora_utc)) === fmtDia.format(new Date()) ? e.precip_hoy_mm : null;
+}
+
+// Botón del mapa para colorear los marcadores por temperatura o por lluvia de hoy.
+const BotonLluvia = L.Control.extend({
+  onAdd() {
+    const caja = L.DomUtil.create("div", "leaflet-bar capa-lluvia");
+    const boton = L.DomUtil.create("a", "", caja);
+    boton.href = "#";
+    boton.setAttribute("role", "button");
+    boton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3.5 4.6 6 8 6 11a6 6 0 0 1-12 0c0-3 2.5-6.4 6-11z"/></svg>';
+    const marcar = () => {
+      const activo = estado.modo === "lluvia";
+      caja.classList.toggle("activo", activo);
+      boton.title = activo ? "Volver a ver la temperatura" : "Ver la lluvia de hoy";
+      boton.setAttribute("aria-label", boton.title);
+      boton.setAttribute("aria-pressed", String(activo));
+    };
+    L.DomEvent.disableClickPropagation(caja);
+    L.DomEvent.on(boton, "click", ev => {
+      L.DomEvent.preventDefault(ev);
+      estado.modo = estado.modo === "lluvia" ? "temp" : "lluvia";
+      localStorage.setItem("modo-mapa", estado.modo);
+      marcar();
+      dibujarEscala();
+      dibujarMapa();
+    });
+    marcar();
+    return caja;
+  },
+});
+new BotonLluvia({ position: "topright" }).addTo(mapa);
 
 // --- Hoja inferior (móvil) ---
 const HOJAS = ["baja", "media", "alta"];
@@ -525,12 +592,17 @@ function prioridad(e) {
 }
 
 function htmlPin(e) {
-  const t = e.temp_c == null ? "—" : `${Math.round(e.temp_c)}°`;
   const clases = ["pin", ["smn", "synop"].includes(e.fuente) ? "smn" : "", OFICIALES.has(e.fuente) ? "" : "red",
-                  esPrivada(e) ? "privada" : "",
-                  e.temp_c == null ? "sin-dato" : "", estado.elegida === e.id ? "elegido" : ""].filter(Boolean).join(" ");
+                  esPrivada(e) ? "privada" : "", estado.elegida === e.id ? "elegido" : ""];
+  if (estado.modo === "lluvia") {
+    const v = lluviaHoy(e);
+    clases.push(v >= 10 ? "oscuro" : "", v == null ? "sin-dato" : "");
+    return `<span class="${clases.filter(Boolean).join(" ")}" style="--c:${colorLluvia(v) || "#b9c3c9"}">${v == null ? "—" : fmt.format(v)}</span>`;
+  }
+  const t = e.temp_c == null ? "—" : `${Math.round(e.temp_c)}°`;
+  clases.push(e.temp_c == null ? "sin-dato" : "");
   const color = colorTemp(e.temp_c) || "#b9c3c9";
-  return `<span class="${clases}" style="--c:${color}">${t}</span>`;
+  return `<span class="${clases.filter(Boolean).join(" ")}" style="--c:${color}">${t}</span>`;
 }
 
 function icono(html) {
@@ -542,9 +614,14 @@ function dibujarMapa() {
   const zoom = mapa.getZoom();
   const vista = mapa.getBounds().pad(0.25);
   let lista = visibles().filter(e => vista.contains([e.lat, e.lon]));
+  const lluvia = estado.modo === "lluvia";
+  // Viendo la lluvia solo van las que la informan; donde llueve más gana el lugar.
+  if (lluvia) lista = lista.filter(e => lluviaHoy(e) != null || e.id === estado.elegida);
   const enVista = lista.length;
   if (zoom < ZOOM_TODAS) {
-    lista.sort((a, b) => prioridad(a) - prioridad(b));
+    lista.sort((a, b) => lluvia && a.id !== estado.elegida && b.id !== estado.elegida
+      ? (lluviaHoy(b) ?? -1) - (lluviaHoy(a) ?? -1) || prioridad(a) - prioridad(b)
+      : prioridad(a) - prioridad(b));
     const ocupadas = new Set();
     lista = lista.filter(e => {
       const p = mapa.project([e.lat, e.lon], zoom);
@@ -591,6 +668,7 @@ function dibujarEstado() {
   nodo.className = "estado";
   nodo.textContent = `${total} estaciones, datos de las ${fmtHora.format(new Date(d.generado_utc))}` +
     (cargando ? ` (actualizando ${cargando} ${cargando === 1 ? "fuente" : "fuentes"}…)` : "") +
+    (estado.modo === "lluvia" ? " · Mapa: lluvia de hoy (mm)" : "") +
     (v && v.dibujadas < v.total ? ` · En el mapa: ${v.dibujadas} de ${v.total} en esta zona; acercá para ver todas.` : "");
 }
 
@@ -666,26 +744,43 @@ const mm = v => `${fmt.format(v)} mm`;
 const fmtDia = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, day: "numeric", month: "numeric" });
 
 // Cada fuente informa la lluvia de períodos distintos: se muestra cada uno con su período.
-function filasLluvia(e) {
-  let hoy = "Lluvia del día";
+function bloqueLluvia(e) {
+  let hoy = "Del día";
   if (e.hora_utc && fmtDia.format(new Date(e.hora_utc)) === fmtDia.format(new Date())) {
-    hoy = "Lluvia hoy (desde las 0 h)";
+    hoy = "Hoy (desde las 0 h)";
   } else if (e.hora_utc) {
-    hoy = `Lluvia del ${fmtDia.format(new Date(e.hora_utc))} (hasta las ${fmtHora.format(new Date(e.hora_utc))})`;
+    hoy = `Del ${fmtDia.format(new Date(e.hora_utc))} (hasta las ${fmtHora.format(new Date(e.hora_utc))})`;
   }
   let otro = null;
   if (e.precip_mm != null) {
     const fin = e.precip_hasta_utc ? new Date(e.precip_hasta_utc) : null;
     const hasta = !fin ? "" : fmtDia.format(fin) === fmtDia.format(new Date())
       ? ` hasta las ${fmtHora.format(fin)}` : ` hasta el ${fmtFecha.format(fin)}`;
-    otro = `Lluvia en ${e.precip_horas === 1 ? "1 hora" : `${e.precip_horas} horas`}${hasta}`;
+    otro = `En ${e.precip_horas === 1 ? "1 hora" : `${e.precip_horas} horas`}${hasta}`;
   }
-  return [
-    ...fila(hoy, e.precip_hoy_mm == null ? null : mm(e.precip_hoy_mm)),
-    ...fila("Lluvia última hora", e.precip_1h_mm == null ? null : mm(e.precip_1h_mm)),
-    ...fila("Lluvia últimas 24 h", e.precip_24h_mm == null ? null : mm(e.precip_24h_mm)),
-    ...(otro ? fila(otro, mm(e.precip_mm)) : []),
+  const hora = e.hora_utc ? new Date(e.hora_utc) : new Date();
+  const mes = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, month: "long" }).format(hora);
+  const anio = new Intl.DateTimeFormat("es-AR", { timeZone: ZONA, year: "numeric" }).format(hora);
+  const v = (nombre, valor, unidad = mm) => fila(nombre, valor == null ? null : unidad(valor));
+  const filas = [
+    ...v("Intensidad ahora", e.precip_intensidad_mmh, x => `${fmt.format(x)} mm/h`),
+    ...v(hoy, e.precip_hoy_mm),
+    ...v("Última hora", e.precip_1h_mm),
+    ...v("Últimas 24 horas", e.precip_24h_mm),
+    ...(otro ? v(otro, e.precip_mm) : []),
+    ...v("Última tormenta", e.precip_evento_mm),
+    ...v("Esta semana (desde el domingo)", e.precip_semana_mm),
+    ...v("Últimos 7 días", e.precip_7d_mm),
+    ...v("Últimos 30 días", e.precip_30d_mm),
+    ...v(`En ${mes}`, e.precip_mes_mm),
+    ...v(`En ${anio}`, e.precip_anio_mm),
+    ...fila("Última lluvia", e.precip_ultima_utc ? fmtFecha.format(new Date(e.precip_ultima_utc)) : null),
   ];
+  if (!filas.length) return null;
+  const otra = e.precip_fuente ? nombreFuente(e.precip_fuente) : null;
+  return el("section", { class: "lluvia" },
+    el("h3", {}, "Lluvia", otra ? el("span", {}, ` · según ${otra}`) : null),
+    el("dl", { class: "datos" }, ...filas));
 }
 
 function textoViento(e) {
@@ -718,9 +813,10 @@ function dibujarDetalle(e) {
       ...fila("Punto de rocío", e.rocio_c == null ? null : `${fmt.format(e.rocio_c)} °C`),
       ...fila("Humedad", e.humedad_pct == null ? null : `${fmt.format(e.humedad_pct)} %`),
       ...fila("Presión", e.presion_hpa == null ? null : `${fmt.format(e.presion_hpa)} hPa`),
-      ...filasLluvia(e),
       ...fila("Visibilidad", e.visibilidad),
-      ...fila("Fenómenos", e.fenomenos),
+      ...fila("Fenómenos", e.fenomenos)),
+    bloqueLluvia(e),
+    el("dl", { class: "datos otros" },
       ...fila("Altura", e.altura_m == null ? null : `${fmt.format(e.altura_m)} m`),
       ...fila("Ubicación", `${e.lat.toFixed(3)}, ${e.lon.toFixed(3)}`)),
     e.crudo ? el("div", { class: "crudo" }, e.crudo) : null,

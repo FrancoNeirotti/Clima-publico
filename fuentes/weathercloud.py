@@ -22,7 +22,7 @@ EN_LINEA = 2
 # Posiciones de cada lectura: código, nombre, lat, lon, estado, webcam,
 # temp×10, humedad, presión×10, viento (m/s)×10, dirección, lluvia del día (mm)×10...
 CODIGO, TITULO, LAT, LON, ESTADO, TEMP, HUMEDAD, PRESION, VIENTO, DIRECCION = 0, 1, 2, 3, 4, 6, 7, 8, 9, 10
-LLUVIA = 11
+LLUVIA, INTENSIDAD = 11, 12  # décimas de mm y de mm/h
 
 
 def _decimos(valor):
@@ -54,5 +54,6 @@ def obtener():
             viento_kmh=None if viento is None else round(viento * 3.6, 1),
             viento_dir_grados=numero(d[DIRECCION]) if viento else None,
             precip_hoy_mm=_decimos(d[LLUVIA]) if len(d) > LLUVIA else None,
+            precip_intensidad_mmh=_decimos(d[INTENSIDAD]) if len(d) > INTENSIDAD else None,
         ))
     return salida

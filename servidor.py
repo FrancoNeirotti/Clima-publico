@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fuentes import (ambient, awekas, bcp, cwop, eeaoc, hidraulica_er, ina, inta, mendoza, metar,
                      sanluis, sensor_community, smn, snih, synop, weathercloud, weatherlink)
-from fuentes.comun import distancia_km, guardar_json, leer_json, limpiar, valores_atipicos
+from fuentes.comun import CAMPOS, distancia_km, guardar_json, leer_json, limpiar, valores_atipicos
 
 # El orden es la prioridad: si dos estaciones de distintas fuentes están a menos
 # de RADIO_DUPLICADO_KM, se muestra la de la fuente que aparece primero. Las redes
@@ -37,6 +37,10 @@ MINUTOS_REINTENTO = 3          # si una fuente falla, se vuelve a probar antes
 HORAS_MAXIMAS = 12             # observaciones más viejas no se muestran
 MINUTOS_FUTURO_TOLERADO = 30   # relojes adelantados: más que esto, la hora no es confiable
 RADIO_DUPLICADO_KM = 2.0
+# Si una estación se descarta por duplicada pero es la misma estación física que la que
+# se muestra (p. ej. el SYNOP de una estación del SMN), su lluvia pasa a la mostrada.
+LLUVIA_DE_DUPLICADA = {"smn": {"synop"}, "metar": {"synop"}}
+CAMPOS_LLUVIA = [c for c in CAMPOS if c.startswith("precip_") and c != "precip_fuente"]
 CELDA_GRADOS = 0.05            # grilla para buscar duplicados (~5 km, mayor que el radio)
 CARPETA_WEB = Path(__file__).parent / "static"
 
@@ -113,10 +117,22 @@ def _celda(lat, lon):
 
 def _duplicada(est, grilla):
     ci, cj = _celda(est["lat"], est["lon"])
-    return any(
-        distancia_km(est["lat"], est["lon"], o["lat"], o["lon"]) < RADIO_DUPLICADO_KM
-        for di in (-1, 0, 1) for dj in (-1, 0, 1) for o in grilla.get((ci + di, cj + dj), ())
-    )
+    return next((
+        o for di in (-1, 0, 1) for dj in (-1, 0, 1) for o in grilla.get((ci + di, cj + dj), ())
+        if distancia_km(est["lat"], est["lon"], o["lat"], o["lon"]) < RADIO_DUPLICADO_KM
+    ), None)
+
+
+def _sumar_lluvia(mostrada, duplicada):
+    """Pasa la lluvia de una duplicada a la estación mostrada si es la misma estación física
+    y la mostrada no informa lluvia."""
+    if duplicada["fuente"] not in LLUVIA_DE_DUPLICADA.get(mostrada["fuente"], ()):
+        return
+    if any(mostrada.get(c) is not None for c in CAMPOS_LLUVIA):
+        return
+    lluvia = {c: duplicada.get(c) for c in CAMPOS_LLUVIA if duplicada.get(c) is not None}
+    if lluvia:
+        mostrada.update(lluvia, precip_fuente=duplicada["fuente"])
 
 
 def _combinar():
@@ -150,8 +166,11 @@ def _combinar():
                 est = dict(est, humedad_pct=None, rocio_c=None)
             if all(est[c] is None for c in ("temp_c", "humedad_pct", "viento_kmh")):
                 continue
-            if _duplicada(est, grilla):
+            previa = _duplicada(est, grilla)
+            if previa is not None:
+                _sumar_lluvia(previa, est)
                 continue
+            est = dict(est)  # copia: _sumar_lluvia puede agregarle campos
             estaciones.append(est)
             grilla.setdefault(_celda(est["lat"], est["lon"]), []).append(est)
             mostradas += 1

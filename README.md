@@ -47,28 +47,43 @@ una sola: la de la fuente que figura primero en la tabla.
 ### Lluvia
 
 Cada fuente informa la lluvia acumulada en períodos distintos, así que se guarda
-en campos separados y el detalle de la estación muestra cada uno con su período
-(si la fuente no la informa, no aparece):
+en campos separados y el detalle de la estación los muestra agrupados en un bloque
+"Lluvia", cada uno con su período (si la fuente no lo informa, no aparece). El
+botón con la gota del mapa colorea los marcadores por la lluvia de hoy.
 
+- `precip_intensidad_mmh`: intensidad actual, en mm/h.
 - `precip_hoy_mm`: desde las 0 h (hora local) del día de la observación.
 - `precip_1h_mm` y `precip_24h_mm`: última hora y últimas 24 horas.
 - `precip_mm`, `precip_horas` y `precip_hasta_utc`: otro período, de `precip_horas`
-  horas que terminan en `precip_hasta_utc` (los partes SYNOP).
+  horas que terminan en `precip_hasta_utc` (partes SYNOP, totales diarios del INA,
+  suma de 24 h del SNIH).
+- `precip_evento_mm`: la tormenta en curso o la última (la consola la reinicia tras
+  unas horas sin lluvia).
+- `precip_7d_mm`, `precip_30d_mm`: últimos 7 y 30 días.
+- `precip_semana_mm`, `precip_mes_mm`, `precip_anio_mm`: semana (desde el domingo),
+  mes y año calendario en curso.
+- `precip_ultima_utc`: cuándo llovió por última vez.
+- `precip_fuente`: si la lluvia viene de otra fuente de la misma estación. Las
+  estaciones del SMN y los aeropuertos no la informan, pero sus partes SYNOP sí:
+  como el SYNOP queda oculto por duplicado, su lluvia pasa a la estación mostrada.
 
 | Fuente | Lluvia |
 |---|---|
-| Aeropuertos (METAR), SMN tiempo presente | No la informan |
-| SMN, partes SYNOP | Grupo 6RRRt: 6 h hasta las 00 y 06 UTC y 24 h hasta las 12 UTC; se toma la del último parte que la trae |
+| Aeropuertos (METAR), SMN tiempo presente | No la informan (se completa con el SYNOP de la misma estación) |
+| SMN, partes SYNOP | Grupo 6RRRt: 6 h hasta las 00 y 06 UTC y 24 h hasta las 12 UTC (del último parte que la trae); grupo 7RRRR de la sección 333: últimas 24 h |
 | Mendoza (DACC) | Del día (no está documentado; se deduce porque solo crece durante el día) |
-| San Luis (REM) | Última hora y últimas 24 h |
-| Tucumán (EEAOC), Bahía Blanca (BCP), INTA | Del día |
-| Entre Ríos (Hidráulica) | Del día, sumando los intervalos del archivo de WeatherLink desde las 0 h |
-| SNIH, INA | No por ahora (períodos poco claros o series aparte) |
-| WeatherLink, Ambient Weather, AWEKAS, Weathercloud | Del día (Ambient también de 24 h cuando la estación la manda) |
+| San Luis (REM) | Última hora, 24 h, 30 días y año |
+| Tucumán (EEAOC) | Del día y del mes |
+| Bahía Blanca (BCP) | Del día, 7 días, mes y año |
+| Entre Ríos (Hidráulica) | Del día (sumando los intervalos del archivo de WeatherLink desde las 0 h), intensidad máxima del último intervalo, y mes y año del resumen NOAA de la consola (se lee cada hora) |
+| INTA | Del día (el acumulado de 4 días queda en el texto original) |
+| SNIH | Suma de los registros de las últimas 24 h (cada registro es la lluvia de 1 o 4 h según la red; se consulta cada hora) y, en las horarias, la de la última hora |
+| INA | Total diario de las 24 h que terminan a las 9 h (hora argentina). La serie de intervalo nativo llega con horas de atraso y sin período claro: no se usa |
+| WeatherLink | Del día |
+| Ambient Weather | Del día, 24 h, intensidad, tormenta, semana, mes, año y fecha de la última lluvia |
+| AWEKAS, Weathercloud | Del día e intensidad |
 | CWOP | Última hora, últimas 24 h y desde medianoche |
 | Sensor.Community | No mide lluvia |
-
-No se guardan los acumulados de varios días, mes o año ni la intensidad (mm/h).
 
 Se revisaron y **no** se incluyen (por ahora): la red de Córdoba y la de la
 Bolsa de Cereales de Entre Ríos (publican las lecturas solo como imagen), la

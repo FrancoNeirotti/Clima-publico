@@ -121,6 +121,8 @@ def decodificar(texto):
         elif seccion == 333 and g[:3] in ("910", "911") and g[3:].isdigit():
             convertir = nudos_a_kmh if unidad_viento in "34" else ms_a_kmh
             r["rafaga_kmh"] = max(r.get("rafaga_kmh") or 0, convertir(int(g[3:])))
+        elif seccion == 333 and g[0] == "7" and g[1:].isdigit():  # 7RRRR: últimas 24 h, décimas
+            r["precip_24h_mm"] = 0 if g[1:] == "9999" else int(g[1:]) / 10
     # Si no hay presión a nivel del mar, se usa la de la estación.
     estacion_p = r.pop("presion_estacion", None)
     if r.get("presion_hpa") is None:

@@ -62,5 +62,6 @@ def obtener():
             viento_dir_grados=numero(s.get("wind_dir")) if viento else None,
             rafaga_kmh=numero(s.get("gust")) or None,
             precip_hoy_mm=numero(s.get("rain")),  # AWEKAS la reinicia a medianoche
+            precip_intensidad_mmh=numero(s.get("rate")),
         ))
     return salida
